@@ -142,6 +142,8 @@
     <div class="actions">
       <button class="btn" id="bReddit">↺ Reddit</button>
       <button class="btn" id="bHN">↺ Hacker News</button>
+      <button class="btn" id="bAppstore">↺ App Store</button>
+      <button class="btn" id="bRSS">↺ RSS</button>
       <button class="btn" id="bCSV">⤓ CSV-Import</button>
       <button class="btn primary" id="bProcess">⚙ Verarbeiten</button>
       <button class="btn" id="bDebug" title="Debug-Modus">🐞</button>
@@ -179,6 +181,7 @@
   <div class="dbody">
     <div class="grp"><h4>Verbindung &amp; Config</h4><div id="dbgConfig">—</div></div>
     <div class="grp"><h4>Tabellen-Zähler</h4><div id="dbgCounts">— (↻ Zähler klicken)</div></div>
+    <div class="grp"><h4>Quellen-Status (zuletzt geprüft)</h4><div id="dbgSources">— (↻ Zähler klicken)</div></div>
     <div class="grp"><h4>Funktionsaufrufe (neueste oben)</h4><div id="dbgLog"></div></div>
   </div>
 </div>
@@ -336,6 +339,8 @@ function summarize(j){
 }
 document.getElementById("bReddit").onclick=e=>runFn("scrape-reddit",e.currentTarget,"Reddit");
 document.getElementById("bHN").onclick=e=>runFn("scrape-hn",e.currentTarget,"Hacker News");
+document.getElementById("bAppstore").onclick=e=>runFn("scrape-appstore",e.currentTarget,"App Store");
+document.getElementById("bRSS").onclick=e=>runFn("scrape-rss",e.currentTarget,"RSS");
 document.getElementById("bProcess").onclick=e=>runFn("process-mentions",e.currentTarget,"Verarbeitung");
 const modal=document.getElementById("csvModal");
 document.getElementById("bCSV").onclick=()=>modal.classList.add("on");
@@ -421,11 +426,39 @@ async function dbgCounts(){
   out.innerHTML="raw_mentions: <b>"+rm+"</b> (unverarbeitet "+rmU+" · verarbeitet "+rmP+" · übersprungen "+rmS+")"+
     "<br>opportunities: <b>"+opp+"</b><br>validation_evidence: <b>"+ev+"</b>";
 }
-function openDbg(){const p=document.getElementById("dbg");p.classList.add("on");dbgConfig();dbgCounts();renderDbgLog();}
+function relTime(iso){
+  if(!iso) return "nie";
+  const diff=(Date.now()-new Date(iso).getTime())/1000;
+  if(diff<90) return "gerade eben";
+  if(diff<3600) return "vor "+Math.floor(diff/60)+" Min";
+  if(diff<86400) return "vor "+Math.floor(diff/3600)+" Std";
+  return "vor "+Math.floor(diff/86400)+" Tg";
+}
+async function dbgSources(){
+  const out=document.getElementById("dbgSources"); if(!out)return; out.textContent="lade…";
+  let rows=[];
+  try{ const {data}=await sb.from("problem_sources").select("*"); rows=data||[]; }catch(_){}
+  const plats={};
+  rows.forEach(r=>{ const p=r.platform; if(!plats[p])plats[p]={count:0,active:0,last:null};
+    plats[p].count++; if(r.is_active)plats[p].active++;
+    if(r.last_run_at && (!plats[p].last||r.last_run_at>plats[p].last)) plats[p].last=r.last_run_at; });
+  const known=[...new Set([...Object.keys(plats),"hackernews","appstore","rss","reddit","manual"])];
+  const lines=[];
+  for(const p of known){
+    const cnt=await dbgCount("raw_mentions",q=>q.eq("platform",p));
+    const m=plats[p];
+    const info=m?(m.active+"/"+m.count+" aktiv · geprüft "+relTime(m.last))
+               :(p==="manual"?"CSV-Import (manuell)":"keine Quelle eingetragen");
+    const col=(m&&m.active>0)?"var(--green)":"var(--muted)";
+    lines.push('<div style="margin:3px 0"><b style="color:'+col+'">'+esc(p)+'</b> — '+info+' · <b>'+cnt+'</b> Erwähnungen</div>');
+  }
+  out.innerHTML=lines.join("");
+}
+function openDbg(){const p=document.getElementById("dbg");p.classList.add("on");dbgConfig();dbgCounts();dbgSources();renderDbgLog();}
 function closeDbg(){document.getElementById("dbg").classList.remove("on");}
 document.getElementById("bDebug").onclick=()=>{const p=document.getElementById("dbg");p.classList.contains("on")?closeDbg():openDbg();};
 document.getElementById("dbgClose").onclick=closeDbg;
-document.getElementById("dbgRefresh").onclick=dbgCounts;
+document.getElementById("dbgRefresh").onclick=()=>{dbgCounts();dbgSources();};
 document.getElementById("dbgClear").onclick=()=>{DBGLOG.length=0;renderDbgLog();};
 if(location.search.indexOf("debug")>=0) openDbg();
 
