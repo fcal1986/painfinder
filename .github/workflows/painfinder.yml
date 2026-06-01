@@ -25,7 +25,7 @@ jobs:
       - name: Scrape Reddit + Hacker News, dann verarbeiten
         env:
           SECRET: ${{ secrets.PAINFINDER_SECRET }}
-          BASE: https://DEIN_REF.supabase.co/functions/v1
+          BASE: https://rqupvcrmugfrmutcirlu.supabase.co/functions/v1
         run: |
           set -e
           echo "→ Reddit"
