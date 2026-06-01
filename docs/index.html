@@ -111,6 +111,23 @@
   .drop{border:1.5px dashed var(--line);border-radius:12px;padding:26px;text-align:center;cursor:pointer;color:var(--muted);font-size:13px}
   .drop:hover{border-color:var(--gold);color:var(--ink)}
   .modal .row{display:flex;gap:8px;margin-top:16px}
+
+  /* ---- Debug-Panel ---- */
+  #dbg{position:fixed;left:0;bottom:0;width:min(580px,100%);max-height:62vh;background:var(--panel);
+    border:1px solid var(--line);border-radius:0 14px 0 0;z-index:180;transform:translateY(105%);
+    transition:transform .25s;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+  #dbg.on{transform:translateY(0)}
+  #dbg .dh{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);
+    font-family:"IBM Plex Mono";font-size:12px}
+  #dbg .dh b{color:var(--gold)}
+  #dbg .dbody{overflow-y:auto;padding:12px 14px;font-family:"IBM Plex Mono";font-size:11.5px;line-height:1.5}
+  #dbg .grp{margin-bottom:14px}
+  #dbg .grp h4{margin:0 0 6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--blue)}
+  #dbg b{color:var(--ink)}
+  #dbg pre{white-space:pre-wrap;word-break:break-word;background:var(--panel3);border-radius:8px;
+    padding:8px;margin:5px 0 10px;border-left:3px solid var(--line);max-height:220px;overflow:auto}
+  #dbg .meta{color:var(--muted);margin-top:8px}
+  #dbg .ok{color:var(--green)} #dbg .bad{color:var(--hot)}
 </style>
 </head>
 <body>
@@ -127,6 +144,7 @@
       <button class="btn" id="bHN">↺ Hacker News</button>
       <button class="btn" id="bCSV">⤓ CSV-Import</button>
       <button class="btn primary" id="bProcess">⚙ Verarbeiten</button>
+      <button class="btn" id="bDebug" title="Debug-Modus">🐞</button>
     </div>
   </div>
 </header>
@@ -152,6 +170,18 @@
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer"></aside>
 <div id="toast"></div>
+<div id="dbg">
+  <div class="dh"><b>🐞 Debug</b>
+    <button class="btn" id="dbgRefresh" style="padding:4px 9px">↻ Zähler</button>
+    <button class="btn" id="dbgClear" style="padding:4px 9px">Log leeren</button>
+    <span id="dbgClose" style="margin-left:auto;cursor:pointer;font-size:18px">✕</span>
+  </div>
+  <div class="dbody">
+    <div class="grp"><h4>Verbindung &amp; Config</h4><div id="dbgConfig">—</div></div>
+    <div class="grp"><h4>Tabellen-Zähler</h4><div id="dbgCounts">— (↻ Zähler klicken)</div></div>
+    <div class="grp"><h4>Funktionsaufrufe (neueste oben)</h4><div id="dbgLog"></div></div>
+  </div>
+</div>
 <div class="modal" id="csvModal">
   <div class="box">
     <h3>Reviews als CSV importieren</h3>
@@ -179,8 +209,9 @@ const ACT_LABEL={test_now:"Sofort testen",validate:"Validieren",research:"Recher
 const EV_TYPE_LABEL={spending_disclosed:"Zahlt bereits",paid_alternative_named:"Bezahltes Tool genannt",alternative_hunting:"Sucht Alternative",switching_frustration:"Wechsel-Frust",urgent_need:"Dringender Bedarf",loss_disclosed:"Verlust beziffert",hiring_for_problem:"Stellt dafuer ein"};
 async function load(){
   const { data, error } = await sb.from("dashboard_opportunities").select("*");
-  if(error){ document.getElementById("grid").innerHTML='<div class="empty">Fehler: '+error.message+'<br><small>config.js korrekt? Schema eingespielt?</small></div>'; return; }
-  ALL=data||[]; hydrate(); render();
+  if(error){ dbg("dashboard_opportunities","Lesefehler",error.message,false); document.getElementById("grid").innerHTML='<div class="empty">Fehler: '+error.message+'<br><small>config.js korrekt? Schema eingespielt?</small></div>'; return; }
+  ALL=data||[]; dbg("dashboard_opportunities","OK",{opportunities:ALL.length},true); hydrate(); render();
+  if(document.getElementById("dbg")&&document.getElementById("dbg").classList.contains("on")) dbgCounts();
 }
 function hydrate(){
   document.getElementById("stTotal").textContent=ALL.length;
@@ -281,16 +312,21 @@ function getSecret(){
   return s;
 }
 async function runFn(name,btn,label,extraBody){
-  const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return false;}
+  const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");dbg(name,"abgebrochen — kein Secret",null,false);return false;}
   btn.disabled=true; const t=btn.textContent; btn.textContent="... laeuft";
   let ok=false;
   try{
     const res=await fetch(FN+name,{method:"POST",headers:{
       "Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},
       body:extraBody?JSON.stringify(extraBody):undefined});
+    const txt=await res.text(); let j=null; try{j=JSON.parse(txt);}catch(_){}
+    dbg(name,"HTTP "+res.status, j!==null?j:txt, res.ok && !(j&&j.error));
     if(res.status===401){sessionStorage.removeItem("pf_secret");toast("Secret falsch — bitte erneut.");}
-    else{const j=await res.json(); if(j.error) toast(label+" Fehler: "+j.error); else {toast(label+": "+summarize(j));ok=true;} await load();}
-  }catch(e){toast(label+" Fehler: "+e.message);}
+    else if(j&&j.error){toast(label+" Fehler: "+j.error);}
+    else if(j){toast(label+": "+summarize(j));ok=true;}
+    else{toast(label+": unerwartete Antwort (s. Debug)");}
+    await load();
+  }catch(e){toast(label+" Fehler: "+e.message);dbg(name,"NETZWERKFEHLER",String(e.message||e),false);}
   btn.disabled=false; btn.textContent=t; return ok;
 }
 function summarize(j){
@@ -324,8 +360,9 @@ document.getElementById("csvGo").onclick=async function(e){
   try{
     const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");btn.disabled=false;btn.textContent="Importieren & verarbeiten";return;}
     const r1=await fetch(FN+"import-mentions",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(parsedCsv)});
-    const j1=await r1.json();
-    if(j1.error){toast("Import-Fehler: "+j1.error);btn.disabled=false;btn.textContent="Importieren & verarbeiten";return;}
+    const t1=await r1.text(); let j1=null; try{j1=JSON.parse(t1);}catch(_){}
+    dbg("import-mentions","HTTP "+r1.status, j1!==null?j1:t1, r1.ok && !(j1&&j1.error));
+    if(!j1||j1.error){toast("Import-Fehler: "+((j1&&j1.error)||"unerwartete Antwort"));btn.disabled=false;btn.textContent="Importieren & verarbeiten";return;}
     toast(j1.inserted+" importiert - verarbeite...");
     await runFn("process-mentions",document.getElementById("bProcess"),"Verarbeitung");
     modal.classList.remove("on"); parsedCsv=null;
@@ -341,6 +378,57 @@ document.getElementById("scrim").onclick=closeDrawer;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");}});
 let toastT;function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),4200);}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ---------------- DEBUG-MODE ---------------- */
+const DBGLOG=[];
+function dbg(name,status,payload,ok){
+  DBGLOG.unshift({t:new Date().toLocaleTimeString(),name,status,payload,ok});
+  if(DBGLOG.length>25) DBGLOG.pop();
+  renderDbgLog();
+}
+function renderDbgLog(){
+  const el=document.getElementById("dbgLog"); if(!el)return;
+  el.innerHTML=DBGLOG.map(e=>{
+    const body=(e.payload&&typeof e.payload==="object")?JSON.stringify(e.payload,null,2):(e.payload!=null?String(e.payload):"");
+    const cls=e.ok===false?"bad":(e.ok===true?"ok":"");
+    return '<div class="meta"><span class="'+cls+'">['+e.t+'] '+esc(e.name)+' — '+esc(e.status)+'</span></div>'+(body?'<pre>'+esc(body)+'</pre>':"");
+  }).join("")||'<span style="color:var(--muted)">noch keine Aufrufe</span>';
+}
+function dbgConfig(){
+  const issues=[];
+  const url=cfg.SUPABASE_URL||"", key=cfg.SUPABASE_ANON_KEY||"";
+  if(!url||url.includes("DEIN")||url.includes("demo")) issues.push("SUPABASE_URL nicht gesetzt");
+  if(!key||key==="DEIN_ANON_KEY"||key==="demo") issues.push("ANON_KEY nicht gesetzt");
+  const secret=sessionStorage.getItem("pf_secret");
+  let html="URL: <b>"+esc(url||"-")+"</b><br>anon-Key: <b>"+(key?("gesetzt ("+esc(key.slice(0,10))+"…)"):"FEHLT")+"</b>"+
+    "<br>Secret in Sitzung: <b>"+(secret?"ja":"nein — wird beim 1. Klick abgefragt")+"</b>";
+  if(issues.length) html+='<br><span class="bad">⚠ '+issues.join(", ")+'</span>';
+  document.getElementById("dbgConfig").innerHTML=html;
+}
+async function dbgCount(table,filter){
+  try{ let q=sb.from(table).select("*",{count:"exact",head:true}); if(filter)q=filter(q);
+    const {count,error}=await q; return error?("ERR: "+error.message):count; }
+  catch(e){ return "ERR: "+(e.message||e); }
+}
+async function dbgCounts(){
+  const out=document.getElementById("dbgCounts"); if(!out)return; out.textContent="lade…";
+  const rm =await dbgCount("raw_mentions");
+  const rmU=await dbgCount("raw_mentions",q=>q.eq("processed",false));
+  const rmP=await dbgCount("raw_mentions",q=>q.eq("processed",true));
+  const rmS=await dbgCount("raw_mentions",q=>q.eq("skipped",true));
+  const opp=await dbgCount("opportunities");
+  const ev =await dbgCount("validation_evidence");
+  out.innerHTML="raw_mentions: <b>"+rm+"</b> (unverarbeitet "+rmU+" · verarbeitet "+rmP+" · übersprungen "+rmS+")"+
+    "<br>opportunities: <b>"+opp+"</b><br>validation_evidence: <b>"+ev+"</b>";
+}
+function openDbg(){const p=document.getElementById("dbg");p.classList.add("on");dbgConfig();dbgCounts();renderDbgLog();}
+function closeDbg(){document.getElementById("dbg").classList.remove("on");}
+document.getElementById("bDebug").onclick=()=>{const p=document.getElementById("dbg");p.classList.contains("on")?closeDbg():openDbg();};
+document.getElementById("dbgClose").onclick=closeDbg;
+document.getElementById("dbgRefresh").onclick=dbgCounts;
+document.getElementById("dbgClear").onclick=()=>{DBGLOG.length=0;renderDbgLog();};
+if(location.search.indexOf("debug")>=0) openDbg();
+
 load();
 </script>
 </body>
