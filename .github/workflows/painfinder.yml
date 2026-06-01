@@ -1,0 +1,41 @@
+# .github/workflows/painfinder.yml
+# Serverseitiger Cron für PainFinder. Ruft die Edge Functions geplant auf.
+# Das Secret liegt als GitHub-Actions-Secret (Settings -> Secrets and variables
+# -> Actions -> New repository secret -> Name: PAINFINDER_SECRET) und wird NIE
+# ans Frontend ausgeliefert.
+#
+# VOR dem Commit: DEIN_REF unten durch deinen Supabase-Project-Ref ersetzen.
+
+name: painfinder-pipeline
+
+on:
+  schedule:
+    - cron: '0 * * * *'        # stündlich (Zeiten in UTC)
+  workflow_dispatch: {}          # erlaubt manuellen Start über den "Run workflow"-Button
+
+# Verhindert überlappende Läufe, falls einer länger dauert
+concurrency:
+  group: painfinder-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape Reddit + Hacker News, dann verarbeiten
+        env:
+          SECRET: ${{ secrets.PAINFINDER_SECRET }}
+          BASE: https://DEIN_REF.supabase.co/functions/v1
+        run: |
+          set -e
+          echo "→ Reddit"
+          curl -fsS -X POST "$BASE/scrape-reddit" -H "x-painfinder-secret: $SECRET"
+          echo
+          echo "→ Hacker News"
+          curl -fsS -X POST "$BASE/scrape-hn" -H "x-painfinder-secret: $SECRET"
+          echo
+          echo "→ Verarbeiten (5 Batches à 8 = bis zu 40 Erwähnungen)"
+          for i in 1 2 3 4 5; do
+            curl -fsS -X POST "$BASE/process-mentions" -H "x-painfinder-secret: $SECRET"
+            echo
+          done
