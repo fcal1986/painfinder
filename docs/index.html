@@ -164,6 +164,8 @@
       <span data-a="test_now">Sofort testen</span>
       <span data-a="validate">Validieren</span>
       <span data-a="research">Recherchieren</span>
+      <span data-a="observe">Beobachten</span>
+      <span data-a="ignore">Ignorieren</span>
     </div>
   </div>
   <div class="grid" id="grid"><div class="empty">lade…</div></div>
@@ -282,7 +284,8 @@ function hydrate(){
 function filtered(){
   let r=ALL.filter(o=>{
     if(state.cat && o.category!==state.cat) return false;
-    if(state.acts.size && !state.acts.has(o.recommended_action)) return false;
+    if(state.acts.size){ if(!state.acts.has(o.recommended_action)) return false; }
+    else if(o.recommended_action==="ignore") return false;   // default: Ignorierte ausblenden
     if(state.q){const b=[o.title,o.audience,o.category,o.monetization_idea].join(" ").toLowerCase();if(!b.includes(state.q.toLowerCase()))return false;}
     return true;
   });
@@ -312,6 +315,12 @@ function render(){
       '<span class="tag fit">&#9672; Fit '+o.founder_fit+'/10</span>'+
       '<span class="act '+o.recommended_action+'">'+ACT_LABEL[o.recommended_action]+'</span></div></div>';
   }).join("");
+  const hiddenIgnored = (!state.acts.size) ? ALL.filter(o=>o.recommended_action==="ignore").length : 0;
+  if(hiddenIgnored>0){
+    const note='<div style="grid-column:1/-1;font-size:12px;color:var(--muted);padding:2px 2px 6px">'+
+      hiddenIgnored+' ignorierte ausgeblendet — über den Filter <b style="color:var(--ink)">Ignorieren</b> einblenden</div>';
+    g.insertAdjacentHTML("afterbegin", note);
+  }
   g.querySelectorAll(".card").forEach(c=>c.onclick=()=>openDrawer(c.dataset.id));
 }
 const stageName=s=>({1:"Beschwerde",2:"Wiederkehrend",3:"Zahlbar",4:"Geschaeftschance"}[s]||"");
