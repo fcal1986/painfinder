@@ -73,6 +73,7 @@
   .scrim.on{opacity:1;pointer-events:auto}
   .drawer{position:fixed;top:0;right:0;height:100%;width:min(580px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:100;transform:translateX(100%);transition:transform .26s cubic-bezier(.2,.8,.2,1);overflow-y:auto;padding:28px 26px 70px}
   .drawer.on{transform:translateX(0)}
+  .conf{font-size:10px;color:var(--faint);font-weight:400;letter-spacing:.04em;text-transform:none}
   .drawer .x{position:absolute;top:18px;right:20px;background:none;border:none;color:var(--muted);font-size:26px;cursor:pointer}
   .drawer h2{font-family:"Fraunces",serif;font-weight:600;font-size:24px;line-height:1.2;margin:4px 44px 4px 0}
   .bigscore{display:flex;align-items:baseline;gap:10px;margin-top:10px}
@@ -164,6 +165,8 @@
       <span data-a="test_now">Sofort testen</span>
       <span data-a="validate">Validieren</span>
       <span data-a="research">Recherchieren</span>
+      <span data-a="observe">Beobachten</span>
+      <span data-a="ignore">Ignorieren</span>
     </div>
   </div>
   <div class="grid" id="grid"><div class="empty">lade…</div></div>
@@ -282,7 +285,8 @@ function hydrate(){
 function filtered(){
   let r=ALL.filter(o=>{
     if(state.cat && o.category!==state.cat) return false;
-    if(state.acts.size && !state.acts.has(o.recommended_action)) return false;
+    if(state.acts.size){ if(!state.acts.has(o.recommended_action)) return false; }
+    else if(o.recommended_action==="ignore") return false;   // default: Ignorierte ausblenden
     if(state.q){const b=[o.title,o.audience,o.category,o.monetization_idea].join(" ").toLowerCase();if(!b.includes(state.q.toLowerCase()))return false;}
     return true;
   });
@@ -312,6 +316,12 @@ function render(){
       '<span class="tag fit">&#9672; Fit '+o.founder_fit+'/10</span>'+
       '<span class="act '+o.recommended_action+'">'+ACT_LABEL[o.recommended_action]+'</span></div></div>';
   }).join("");
+  const hiddenIgnored = (!state.acts.size) ? ALL.filter(o=>o.recommended_action==="ignore").length : 0;
+  if(hiddenIgnored>0){
+    const note='<div style="grid-column:1/-1;font-size:12px;color:var(--muted);padding:2px 2px 6px">'+
+      hiddenIgnored+' ignorierte ausgeblendet — über den Filter <b style="color:var(--ink)">Ignorieren</b> einblenden</div>';
+    g.insertAdjacentHTML("afterbegin", note);
+  }
   g.querySelectorAll(".card").forEach(c=>c.onclick=()=>openDrawer(c.dataset.id));
 }
 const stageName=s=>({1:"Beschwerde",2:"Wiederkehrend",3:"Zahlbar",4:"Geschaeftschance"}[s]||"");
@@ -323,6 +333,8 @@ async function openDrawer(id){
     '<h2>'+esc(o.title)+'</h2>'+
     '<div class="bigscore"><div class="v">'+(+o.opportunity_score||0).toFixed(0)+'</div>'+
     '<span style="color:var(--muted)">/100 &middot; <b style="color:var(--ink)">'+ACT_LABEL[o.recommended_action]+'</b></span></div>'+
+    (o.score_cap_reason?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 6px">'+esc(o.score_cap_reason)+'</div>':"")+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Quellenqualität '+(o.source_quality||0)+'/10 &middot; Pain '+(o.pain_intensity||0)+'/10 &middot; '+(o.source_count||0)+' Quellen &middot; '+(o.mention_count||0)+' Erwähnungen</div>'+
     '<div id="dynbody"><div class="sec"><p style="color:var(--muted)">lade Details...</p></div></div>';
   document.getElementById("scrim").classList.add("on"); d.classList.add("on");
   const [{data:ev},{data:jtbd},{data:links}] = await Promise.all([
@@ -348,16 +360,69 @@ async function openDrawer(id){
     (job?'<div class="sec"><div class="h">Jobs-to-be-done</div><p><b>Job:</b> '+esc(job.job)+'</p>'+
       (job.workaround?'<p style="margin-top:6px"><b>Workaround:</b> '+esc(job.workaround)+'</p>':"")+
       (job.workaround_pain?'<p style="margin-top:6px;color:var(--muted)"><b>Warum schlecht:</b> '+esc(job.workaround_pain)+'</p>':"")+'</div>':"")+
+    '<div class="sec"><button class="btn" id="expMd" style="width:100%">⤓ Als Markdown exportieren</button></div>'+
     '<div class="sec"><div class="h">Zahlungs-Evidenz ('+(ev||[]).length+')</div>'+evHtml+'</div>'+
+    renderPersona(o.buyer_persona)+renderCompetitors(o.competitors)+renderValidation(o.validation_plan)+
+    renderNote("Marktgröße",o.market_note)+renderNote("Regulatorik",o.regulatory_note)+
+    ((!o.enriched_at && o.stage>=3)?'<div class="sec"><p style="color:var(--muted);font-size:12px">Anreicherung (Persona, Wettbewerb, Validierungsplan) folgt automatisch beim nächsten Verarbeitungslauf.</p></div>':"")+
     '<div class="sec"><div class="h">Score-Aufschluesselung</div>'+
-      '<div class="block-title">Evidenz-Block (max 50)</div><div class="bars">'+evBars+'</div>'+
-      '<div class="block-title">Founder Fit 2.0 (max 30)</div><div class="bars">'+fitBars+'</div></div>'+
+      '<div class="block-title">Nachfrage-Evidenz (max 45)</div><div class="bars">'+evBars+'</div>'+
+      '<div class="block-title">Founder-Fit (max 20)</div><div class="bars">'+fitBars+'</div></div>'+
     (srcHtml?'<div class="sec"><div class="h">Quellen ('+(links||[]).length+')</div><div class="src">'+srcHtml+'</div></div>':"")+
     '<div class="sec"><div class="h">Aktion ueberschreiben</div><div class="prios">'+prios+'</div>'+
       '<textarea id="noteTxt" placeholder="Notiz...">'+esc(o.user_note||"")+'</textarea>'+
       '<button class="btn primary" id="saveNote" style="margin-top:9px">Speichern</button></div>';
+  const expBtn=d.querySelector("#expMd"); if(expBtn) expBtn.onclick=()=>exportMd(o,ev,job);
   d.querySelectorAll(".pbtn").forEach(b=>b.onclick=()=>savePrio(id,b.dataset.p));
   d.querySelector("#saveNote").onclick=()=>{const on=d.querySelector(".pbtn.on");savePrio(id,(on&&on.dataset.p)||o.recommended_action,d.querySelector("#noteTxt").value);};
+}
+function renderPersona(p){
+  if(!p) return "";
+  const row=(l,v)=> v?'<p style="margin:3px 0"><b>'+esc(l)+':</b> '+esc(v)+'</p>':"";
+  const conf=(typeof p.confidence==="number")?' <span class="conf">Konfidenz '+Math.round(p.confidence*100)+'%</span>':"";
+  const body=row("Nutzer",p.user)+row("Entscheider",p.decision_maker)+row("Budget Owner",p.budget_owner)+
+    row("Branche",p.industry)+row("Unternehmensgröße",p.company_size)+row("Workaround",p.current_workaround)+
+    row("Bestehende Lösung",p.existing_solution)+row("Wechselbarriere",p.switching_barrier)+
+    row("Zahlungswahrscheinlichkeit",p.payment_probability);
+  return body?'<div class="sec"><div class="h">Buyer Persona'+conf+'</div>'+body+'</div>':"";
+}
+function renderCompetitors(arr){
+  if(!Array.isArray(arr)||!arr.length) return "";
+  return '<div class="sec"><div class="h">Wettbewerb</div>'+arr.map(function(c){return
+    '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b>'+esc(c.name||"?")+'</b>'+
+    (c.type?' <span class="tag">'+esc(c.type)+'</span>':"")+
+    (c.weakness?'<div style="color:var(--muted);font-size:12px;margin-top:2px">Schwäche: '+esc(c.weakness)+'</div>':"")+'</div>';}).join("")+'</div>';
+}
+function renderValidation(v){
+  if(!v) return "";
+  const list=(l,arr)=> (Array.isArray(arr)&&arr.length)?'<p style="margin:6px 0 2px"><b>'+esc(l)+':</b></p><ul style="margin:0 0 6px 18px;padding:0">'+arr.map(function(x){return '<li>'+esc(x)+'</li>';}).join("")+'</ul>':"";
+  const row=(l,x)=> x?'<p style="margin:4px 0"><b>'+esc(l)+':</b> '+esc(x)+'</p>':"";
+  const body=row("Hypothese",v.hypothesis)+list("Schritte",v.steps)+list("Interviewfragen",v.interview_questions)+
+    row("Interview-Zielgruppe",v.interview_target)+row("Landingpage-Test",v.landing_test)+
+    row("Outreach",v.outreach_idea)+row("Concierge-MVP",v.concierge_mvp)+row("Zahlungsbereitschaftstest",v.willingness_to_pay_test);
+  return body?'<div class="sec"><div class="h">Validierungsplan</div>'+body+'</div>':"";
+}
+function renderNote(label,n){
+  if(!n||!n.text) return "";
+  const conf=(typeof n.confidence==="number")?Math.round(n.confidence*100)+'%':"?";
+  return '<div class="sec"><div class="h">'+esc(label)+' <span class="conf">Hypothese &middot; Konfidenz '+conf+'</span></div>'+
+    '<p style="color:var(--muted)">'+esc(n.text)+(n.research_needed?' <i style="color:var(--faint)">(noch zu pruefen)</i>':"")+'</p></div>';
+}
+function exportMd(o,ev,job){
+  var L=ACT_LABEL[o.recommended_action]||o.recommended_action;
+  var md="# "+(o.title||"")+"\n\n**Score:** "+(+o.opportunity_score||0).toFixed(0)+"/100 \u00b7 Stufe "+o.stage+"/4 \u00b7 "+L+"\n\n";
+  if(o.score_cap_reason) md+="> "+o.score_cap_reason+"\n\n";
+  md+="**Kategorie:** "+(o.category||"-")+"  \n**Zielgruppe:** "+(o.audience||"-")+"\n\n";
+  md+="## Naechster Schritt\n"+(o.next_step||"-")+"\n\n## Monetarisierung\n"+(o.monetization_idea||"-")+"\n\n";
+  if(job){md+="## Job-to-be-done\n- Job: "+(job.job||"")+"\n"+(job.workaround?"- Workaround: "+job.workaround+"\n":"")+(job.workaround_pain?"- Problem: "+job.workaround_pain+"\n":"")+"\n";}
+  if(ev&&ev.length){md+="## Zahlungs-Evidenz\n"+ev.map(function(e){return "- ["+(EV_TYPE_LABEL[e.evidence_type]||e.evidence_type)+"] \""+e.quote+"\""+(e.amount_value?" ("+e.amount_value+" "+(e.amount_currency||"")+"/"+(e.amount_period||"")+")":"");}).join("\n")+"\n\n";}
+  var p=o.buyer_persona; if(p){md+="## Buyer Persona\n"+[["Nutzer",p.user],["Entscheider",p.decision_maker],["Budget Owner",p.budget_owner],["Branche",p.industry],["Groesse",p.company_size],["Workaround",p.current_workaround],["Wechselbarriere",p.switching_barrier],["Zahlungswahrscheinlichkeit",p.payment_probability]].filter(function(x){return x[1];}).map(function(x){return "- "+x[0]+": "+x[1];}).join("\n")+"\n\n";}
+  var cs=o.competitors; if(Array.isArray(cs)&&cs.length){md+="## Wettbewerb\n"+cs.map(function(c){return "- "+(c.name||"?")+(c.weakness?" \u2014 "+c.weakness:"");}).join("\n")+"\n\n";}
+  var v=o.validation_plan; if(v){md+="## Validierungsplan\n"+(v.hypothesis?"**Hypothese:** "+v.hypothesis+"\n\n":"");
+    if(Array.isArray(v.steps)&&v.steps.length) md+=v.steps.map(function(s,i){return (i+1)+". "+s;}).join("\n")+"\n\n";
+    if(Array.isArray(v.interview_questions)&&v.interview_questions.length) md+="**Interviewfragen:**\n"+v.interview_questions.map(function(q){return "- "+q;}).join("\n")+"\n\n";}
+  try{var blob=new Blob([md],{type:"text/markdown"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=(o.cluster_key||"opportunity")+".md";document.body.appendChild(a);a.click();a.remove();toast("Markdown exportiert");}
+  catch(e){toast("Export-Fehler: "+e.message);}
 }
 function bar(k,l,v,cls){v=v||0;return '<div class="brow"><span>'+l+'</span><span class="track"><span class="fill '+cls+'" style="width:'+(v*10)+'%"></span></span><b>'+v+'</b></div>';}
 function closeDrawer(){document.getElementById("scrim").classList.remove("on");document.getElementById("drawer").classList.remove("on");}
