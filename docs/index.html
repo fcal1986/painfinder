@@ -140,12 +140,10 @@
       <div class="stat"><div class="n" id="stTop">–</div><div class="l">Top-Score</div></div>
     </div>
     <div class="actions">
-      <button class="btn" id="bReddit">↺ Reddit</button>
-      <button class="btn" id="bHN">↺ Hacker News</button>
-      <button class="btn" id="bAppstore">↺ App Store</button>
-      <button class="btn" id="bRSS">↺ RSS</button>
-      <button class="btn" id="bCSV">⤓ CSV-Import</button>
-      <button class="btn primary" id="bProcess">⚙ Verarbeiten</button>
+      <button class="btn primary" id="bSearch">🔍 Durchsuchen</button>
+      <button class="btn" id="bSources">🗂 Quellen</button>
+      <button class="btn" id="bImport">＋ Bewertungen</button>
+      <button class="btn" id="bProcess">⚙ Verarbeiten</button>
       <button class="btn" id="bDebug" title="Debug-Modus">🐞</button>
     </div>
   </div>
@@ -187,13 +185,39 @@
 </div>
 <div class="modal" id="csvModal">
   <div class="box">
-    <h3>Reviews als CSV importieren</h3>
-    <p>Pflichtspalte: <code>body</code>. Optional: <code>title</code>, <code>url</code>, <code>author</code>, <code>source</code>, <code>posted_at</code>. Erste Zeile = Spaltennamen.</p>
+    <h3>Bewertungen importieren</h3>
+    <p>Füge Reviews direkt ein (eine Bewertung pro Absatz, durch Leerzeile getrennt) — oder lade eine CSV.</p>
+    <textarea id="pasteBox" placeholder="Hier Bewertungen einfügen…&#10;&#10;Eine Bewertung pro Absatz, getrennt durch eine Leerzeile." style="min-height:150px"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn primary" id="pasteGo" style="flex:1">Einfügen &amp; verarbeiten</button>
+    </div>
+    <p style="margin:14px 0 6px">— oder CSV (Pflichtspalte <code>body</code>) —</p>
     <div class="drop" id="drop">CSV-Datei hierher ziehen oder klicken</div>
     <input type="file" id="csvFile" accept=".csv" style="display:none" />
     <div class="row">
-      <button class="btn" id="csvCancel" style="flex:1">Abbrechen</button>
-      <button class="btn primary" id="csvGo" style="flex:1" disabled>Importieren &amp; verarbeiten</button>
+      <button class="btn" id="csvCancel" style="flex:1">Schließen</button>
+      <button class="btn primary" id="csvGo" style="flex:1" disabled>CSV importieren &amp; verarbeiten</button>
+    </div>
+  </div>
+</div>
+<div class="modal" id="srcModal">
+  <div class="box" style="max-width:560px">
+    <h3>Quellen verwalten</h3>
+    <p>Neue Quellen werden automatisch auch vom stündlichen Cron geprüft.</p>
+    <div class="row" style="gap:6px">
+      <select id="srcPlatform" style="flex:0 0 130px">
+        <option value="appstore">App Store</option>
+        <option value="rss">RSS</option>
+        <option value="hackernews">Hacker News</option>
+        <option value="reddit">Reddit</option>
+      </select>
+      <input id="srcHandle" style="flex:1" placeholder="" />
+      <button class="btn primary" id="srcAdd">Hinzufügen</button>
+    </div>
+    <p id="srcHint" style="margin:6px 0 0;color:var(--faint);font-size:11px"></p>
+    <div id="srcList" style="margin-top:14px;max-height:300px;overflow-y:auto"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="srcClose" style="flex:1">Schließen</button>
     </div>
   </div>
 </div>
@@ -337,13 +361,22 @@ function summarize(j){
   if(j.newOpportunities!==undefined) return j.processed+" verarbeitet, "+j.newOpportunities+" neue Opps, "+j.updated+" aktualisiert";
   return "ok";
 }
-document.getElementById("bReddit").onclick=e=>runFn("scrape-reddit",e.currentTarget,"Reddit");
-document.getElementById("bHN").onclick=e=>runFn("scrape-hn",e.currentTarget,"Hacker News");
-document.getElementById("bAppstore").onclick=e=>runFn("scrape-appstore",e.currentTarget,"App Store");
-document.getElementById("bRSS").onclick=e=>runFn("scrape-rss",e.currentTarget,"RSS");
+// ---- Durchsuchen: alle aktiven Crawl-Quellen nacheinander + verarbeiten ----
+document.getElementById("bSearch").onclick=async function(e){
+  const btn=e.currentTarget; const secret=getSecret();
+  if(!secret){toast("Abgebrochen — kein Secret.");return;}
+  btn.disabled=true; const t=btn.textContent;
+  for(const [fn,label] of [["scrape-hn","Hacker News"],["scrape-appstore","App Store"],["scrape-rss","RSS"]]){
+    btn.textContent="… "+label; await runFn(fn,btn,label);
+  }
+  btn.textContent="… Verarbeiten"; await runFn("process-mentions",btn,"Verarbeitung");
+  btn.disabled=false; btn.textContent=t;
+};
 document.getElementById("bProcess").onclick=e=>runFn("process-mentions",e.currentTarget,"Verarbeitung");
+
+// ---- Import-Modal (CSV + Paste) ----
 const modal=document.getElementById("csvModal");
-document.getElementById("bCSV").onclick=()=>modal.classList.add("on");
+document.getElementById("bImport").onclick=()=>modal.classList.add("on");
 document.getElementById("csvCancel").onclick=()=>{modal.classList.remove("on");parsedCsv=null;};
 document.getElementById("drop").onclick=()=>document.getElementById("csvFile").click();
 document.getElementById("csvFile").onchange=e=>handleCsv(e.target.files[0]);
@@ -359,28 +392,95 @@ function handleCsv(file){
     document.getElementById("csvGo").disabled=false;
   }});
 }
-document.getElementById("csvGo").onclick=async function(e){
-  if(!parsedCsv)return;
-  const btn=e.currentTarget; btn.disabled=true; btn.textContent="... importiere";
+async function sendImport(rows,label,btn){
+  const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return false;}
+  const old=btn.textContent; btn.disabled=true; btn.textContent="… importiere";
   try{
-    const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");btn.disabled=false;btn.textContent="Importieren & verarbeiten";return;}
-    const r1=await fetch(FN+"import-mentions",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(parsedCsv)});
+    const r1=await fetch(FN+"import-mentions",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify({rows:rows,source_label:label})});
     const t1=await r1.text(); let j1=null; try{j1=JSON.parse(t1);}catch(_){}
     dbg("import-mentions","HTTP "+r1.status, j1!==null?j1:t1, r1.ok && !(j1&&j1.error));
-    if(!j1||j1.error){toast("Import-Fehler: "+((j1&&j1.error)||"unerwartete Antwort"));btn.disabled=false;btn.textContent="Importieren & verarbeiten";return;}
-    toast(j1.inserted+" importiert - verarbeite...");
+    if(!j1||j1.error){toast("Import-Fehler: "+((j1&&j1.error)||"unerwartete Antwort"));btn.disabled=false;btn.textContent=old;return false;}
+    toast(j1.inserted+" importiert – verarbeite…");
     await runFn("process-mentions",document.getElementById("bProcess"),"Verarbeitung");
-    modal.classList.remove("on"); parsedCsv=null;
-    document.getElementById("drop").textContent="CSV-Datei hierher ziehen oder klicken";
-  }catch(err){toast("Fehler: "+err.message);}
-  btn.disabled=false; btn.textContent="Importieren & verarbeiten";
+    modal.classList.remove("on");
+    btn.disabled=false; btn.textContent=old; return true;
+  }catch(err){toast("Fehler: "+err.message);btn.disabled=false;btn.textContent=old;return false;}
+}
+document.getElementById("csvGo").onclick=async function(e){
+  if(!parsedCsv)return;
+  const ok=await sendImport(parsedCsv.rows,parsedCsv.source_label,e.currentTarget);
+  if(ok){parsedCsv=null;document.getElementById("drop").textContent="CSV-Datei hierher ziehen oder klicken";}
+};
+document.getElementById("pasteGo").onclick=async function(e){
+  const txt=document.getElementById("pasteBox").value||"";
+  const blocks=txt.split(/\n\s*\n/).map(s=>s.trim()).filter(s=>s.length>=10);
+  if(!blocks.length){toast("Bitte Bewertungen einfügen (min. 10 Zeichen, durch Leerzeile getrennt).");return;}
+  const rows=blocks.map(b=>({body:b}));
+  const ok=await sendImport(rows,"paste",e.currentTarget);
+  if(ok) document.getElementById("pasteBox").value="";
+};
+
+// ---- Quellen verwalten ----
+const srcModal=document.getElementById("srcModal");
+const SRC_HINT={appstore:"App-ID oder APPID:LAND (z.B. 497799835:de) — Zahl aus der App-Store-URL",
+  rss:"Feed-URL, z.B. https://forum.example.com/rss",
+  hackernews:"Suchbegriff, z.B. \"alternative to\" oder \"too expensive\"",
+  reddit:"Subreddit-Name (Reddit aktuell nur mit genehmigten API-Credentials)"};
+function srcHint(){const p=document.getElementById("srcPlatform").value;document.getElementById("srcHint").textContent=SRC_HINT[p]||"";}
+document.getElementById("bSources").onclick=()=>{srcModal.classList.add("on");srcHint();loadSources();};
+document.getElementById("srcClose").onclick=()=>srcModal.classList.remove("on");
+document.getElementById("srcPlatform").onchange=srcHint;
+async function manageSrc(payload){
+  const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return null;}
+  try{
+    const res=await fetch(FN+"manage-sources",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(payload)});
+    const txt=await res.text(); let j=null; try{j=JSON.parse(txt);}catch(_){}
+    dbg("manage-sources","HTTP "+res.status, j!==null?j:txt, res.ok && !(j&&j.error));
+    if(res.status===401){sessionStorage.removeItem("pf_secret");toast("Secret falsch.");return null;}
+    if(!j||j.error){toast("Fehler: "+((j&&j.error)||"unerwartet"));return null;}
+    return j.sources||[];
+  }catch(e){toast("Fehler: "+e.message);return null;}
+}
+async function loadSources(){
+  const list=document.getElementById("srcList"); list.textContent="lade…";
+  const src=await manageSrc({action:"list"});
+  if(!src){list.textContent="(konnte nicht laden)";return;}
+  renderSources(src);
+}
+function renderSources(src){
+  const list=document.getElementById("srcList");
+  if(!src.length){list.innerHTML='<span style="color:var(--muted);font-size:13px">Noch keine Quellen.</span>';return;}
+  list.innerHTML=src.map(s=>{
+    const col=s.is_active?"var(--green)":"var(--faint)";
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px">'+
+      '<span class="mono" style="flex:0 0 78px;color:var(--blue);text-transform:uppercase;font-size:10px">'+esc(s.platform)+'</span>'+
+      '<span style="flex:1;word-break:break-all">'+esc(s.handle||"")+'</span>'+
+      '<button class="btn" data-tgl="'+s.id+'" data-act="'+(s.is_active?'0':'1')+'" style="padding:4px 8px;color:'+col+'">'+(s.is_active?'aktiv':'inaktiv')+'</button>'+
+      '<button class="btn" data-del="'+s.id+'" style="padding:4px 8px">🗑</button></div>';
+  }).join("");
+  list.querySelectorAll("[data-tgl]").forEach(b=>b.onclick=async()=>{
+    const src2=await manageSrc({action:"setactive",id:b.dataset.tgl,is_active:b.dataset.act==="1"});
+    if(src2){renderSources(src2);toast("Quelle aktualisiert");}
+  });
+  list.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Quelle löschen?"))return;
+    const src2=await manageSrc({action:"delete",id:b.dataset.del});
+    if(src2){renderSources(src2);toast("Quelle gelöscht");}
+  });
+}
+document.getElementById("srcAdd").onclick=async()=>{
+  const platform=document.getElementById("srcPlatform").value;
+  const handle=document.getElementById("srcHandle").value.trim();
+  if(!handle){toast("Bitte einen Wert eingeben.");return;}
+  const src=await manageSrc({action:"add",platform:platform,handle:handle});
+  if(src){renderSources(src);document.getElementById("srcHandle").value="";toast("Quelle hinzugefügt");}
 };
 document.getElementById("q").oninput=e=>{state.q=e.target.value;render();};
 document.getElementById("fCat").onchange=e=>{state.cat=e.target.value;render();};
 document.getElementById("fSort").onchange=e=>{state.sort=e.target.value;render();};
 document.querySelectorAll("#actSeg span").forEach(s=>s.onclick=()=>{s.classList.toggle("on");const a=s.dataset.a;state.acts.has(a)?state.acts.delete(a):state.acts.add(a);render();});
 document.getElementById("scrim").onclick=closeDrawer;
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");srcModal.classList.remove("on");}});
 let toastT;function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),4200);}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
