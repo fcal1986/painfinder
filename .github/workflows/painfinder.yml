@@ -20,10 +20,10 @@ jobs:
       - name: Quellen sammeln + verarbeiten
         env:
           SECRET: ${{ secrets.PAINFINDER_SECRET }}
-          BASE: https://rqupvcrmugfrmutcirlu.supabase.co/functions/v1
+          BASE: https://DEIN_REF.supabase.co/functions/v1
         run: |
           set -e
-          for FN in scrape-hn scrape-appstore scrape-rss scrape-reddit; do
+          for FN in scrape-hn scrape-appstore scrape-rss scrape-web scrape-reddit; do
             echo "→ $FN"
             curl -sS -X POST "$BASE/$FN" -H "x-painfinder-secret: $SECRET" || echo "  ($FN übersprungen)"
             echo
