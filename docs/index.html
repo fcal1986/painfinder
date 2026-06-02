@@ -143,6 +143,7 @@
       <button class="btn primary" id="bSearch">🔍 Durchsuchen</button>
       <button class="btn" id="bSources">🗂 Quellen</button>
       <button class="btn" id="bImport">＋ Bewertungen</button>
+      <button class="btn" id="bMentions">📄 Mentions</button>
       <button class="btn" id="bProcess">⚙ Verarbeiten</button>
       <button class="btn" id="bDebug" title="Debug-Modus">🐞</button>
     </div>
@@ -200,12 +201,35 @@
     </div>
   </div>
 </div>
+<div class="modal" id="mentModal">
+  <div class="box" style="max-width:760px">
+    <h3>Raw Mentions</h3>
+    <div class="row" style="gap:6px;flex-wrap:wrap">
+      <input id="mSearch" style="flex:1;min-width:160px" placeholder="suchen in Titel/Text…" />
+      <select id="mPlatform" style="flex:0 0 auto"><option value="">Alle Quellen</option></select>
+      <select id="mStatus" style="flex:0 0 auto">
+        <option value="">Alle</option><option value="proc">verarbeitet</option>
+        <option value="unproc">unverarbeitet</option><option value="skip">übersprungen</option>
+      </select>
+      <select id="mSort" style="flex:0 0 auto">
+        <option value="fetched_desc">geholt: neueste</option>
+        <option value="fetched_asc">geholt: älteste</option>
+        <option value="posted_desc">gepostet: neueste</option>
+        <option value="posted_asc">gepostet: älteste</option>
+      </select>
+    </div>
+    <div id="mList" style="margin-top:12px;max-height:420px;overflow-y:auto"></div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="mClose" style="flex:1">Schließen</button></div>
+  </div>
+</div>
 <div class="modal" id="srcModal">
   <div class="box" style="max-width:560px">
     <h3>Quellen verwalten</h3>
     <p>Neue Quellen werden automatisch auch vom stündlichen Cron geprüft.</p>
     <div class="row" style="gap:6px">
       <select id="srcPlatform" style="flex:0 0 130px">
+        <option value="web">Webseite (URL)</option>
+        <option value="term">Suchbegriff(e)</option>
         <option value="appstore">App Store</option>
         <option value="rss">RSS</option>
         <option value="hackernews">Hacker News</option>
@@ -215,7 +239,15 @@
       <button class="btn primary" id="srcAdd">Hinzufügen</button>
     </div>
     <p id="srcHint" style="margin:6px 0 0;color:var(--faint);font-size:11px"></p>
-    <div id="srcList" style="margin-top:14px;max-height:300px;overflow-y:auto"></div>
+    <div class="row" style="margin-top:12px;gap:6px;align-items:center">
+      <span style="font-size:11px;color:var(--muted)">Sortieren:</span>
+      <select id="srcSort" style="flex:0 0 auto">
+        <option value="type">Typ</option>
+        <option value="status">Status</option>
+        <option value="recent">zuletzt geprüft</option>
+      </select>
+    </div>
+    <div id="srcList" style="margin-top:10px;max-height:300px;overflow-y:auto"></div>
     <div class="row" style="margin-top:14px">
       <button class="btn" id="srcClose" style="flex:1">Schließen</button>
     </div>
@@ -322,7 +354,7 @@ async function openDrawer(id){
       '<div class="block-title">Founder Fit 2.0 (max 30)</div><div class="bars">'+fitBars+'</div></div>'+
     (srcHtml?'<div class="sec"><div class="h">Quellen ('+(links||[]).length+')</div><div class="src">'+srcHtml+'</div></div>':"")+
     '<div class="sec"><div class="h">Aktion ueberschreiben</div><div class="prios">'+prios+'</div>'+
-      '<textarea id="noteTxt" placeholder="Notiz..."></textarea>'+
+      '<textarea id="noteTxt" placeholder="Notiz...">'+esc(o.user_note||"")+'</textarea>'+
       '<button class="btn primary" id="saveNote" style="margin-top:9px">Speichern</button></div>';
   d.querySelectorAll(".pbtn").forEach(b=>b.onclick=()=>savePrio(id,b.dataset.p));
   d.querySelector("#saveNote").onclick=()=>{const on=d.querySelector(".pbtn.on");savePrio(id,(on&&on.dataset.p)||o.recommended_action,d.querySelector("#noteTxt").value);};
@@ -330,8 +362,11 @@ async function openDrawer(id){
 function bar(k,l,v,cls){v=v||0;return '<div class="brow"><span>'+l+'</span><span class="track"><span class="fill '+cls+'" style="width:'+(v*10)+'%"></span></span><b>'+v+'</b></div>';}
 function closeDrawer(){document.getElementById("scrim").classList.remove("on");document.getElementById("drawer").classList.remove("on");}
 async function savePrio(id,prio,note){
-  const { error }=await sb.from("user_notes").insert({opportunity_id:id,priority:prio,note:note||null});
-  toast(error?("Fehler: "+error.message):"Gespeichert");
+  const { error }=await sb.from("user_notes").insert({opportunity_id:id,priority:prio,note:(note!=null?note:null)});
+  if(error){toast("Fehler: "+error.message);return;}
+  toast("Gespeichert ✓");
+  await load();          // View spiegelt die Übersteuerung jetzt
+  openDrawer(id);        // Drawer mit neuem Stand neu öffnen
 }
 function getSecret(){
   let s=sessionStorage.getItem("pf_secret");
@@ -366,7 +401,7 @@ document.getElementById("bSearch").onclick=async function(e){
   const btn=e.currentTarget; const secret=getSecret();
   if(!secret){toast("Abgebrochen — kein Secret.");return;}
   btn.disabled=true; const t=btn.textContent;
-  for(const [fn,label] of [["scrape-hn","Hacker News"],["scrape-appstore","App Store"],["scrape-rss","RSS"]]){
+  for(const [fn,label] of [["scrape-hn","Hacker News"],["scrape-appstore","App Store"],["scrape-rss","RSS"],["scrape-web","Webseiten"]]){
     btn.textContent="… "+label; await runFn(fn,btn,label);
   }
   btn.textContent="… Verarbeiten"; await runFn("process-mentions",btn,"Verarbeitung");
@@ -422,9 +457,11 @@ document.getElementById("pasteGo").onclick=async function(e){
 
 // ---- Quellen verwalten ----
 const srcModal=document.getElementById("srcModal");
-const SRC_HINT={appstore:"App-ID oder APPID:LAND (z.B. 497799835:de) — Zahl aus der App-Store-URL",
+const SRC_HINT={web:"Komplette URL — die Seite wird gegen deine 'Suchbegriff'-Quellen geprüft (am besten Foren/Review-Seiten, nicht Marketing-Startseiten)",
+  term:"Suchbegriffe, mehrere mit Semikolon: alternative to;too expensive;zu teuer",
+  appstore:"App-ID oder APPID:LAND (z.B. 497799835:de) — Zahl aus der App-Store-URL",
   rss:"Feed-URL, z.B. https://forum.example.com/rss",
-  hackernews:"Suchbegriff, z.B. \"alternative to\" oder \"too expensive\"",
+  hackernews:"Suchbegriff, z.B. \"alternative to\" — mehrere als eigene Zeilen",
   reddit:"Subreddit-Name (Reddit aktuell nur mit genehmigten API-Credentials)"};
 function srcHint(){const p=document.getElementById("srcPlatform").value;document.getElementById("srcHint").textContent=SRC_HINT[p]||"";}
 document.getElementById("bSources").onclick=()=>{srcModal.classList.add("on");srcHint();loadSources();};
@@ -447,9 +484,20 @@ async function loadSources(){
   if(!src){list.textContent="(konnte nicht laden)";return;}
   renderSources(src);
 }
+let SRC_CACHE=[];
+let srcSortMode="type";
+function sortSources(arr){
+  const a=[...arr];
+  if(srcSortMode==="type") a.sort((x,y)=>(x.platform||"").localeCompare(y.platform||"")||(x.handle||"").localeCompare(y.handle||""));
+  else if(srcSortMode==="status") a.sort((x,y)=>(y.is_active?1:0)-(x.is_active?1:0));
+  else if(srcSortMode==="recent") a.sort((x,y)=>new Date(y.last_run_at||0)-new Date(x.last_run_at||0));
+  return a;
+}
 function renderSources(src){
+  SRC_CACHE=src;
   const list=document.getElementById("srcList");
   if(!src.length){list.innerHTML='<span style="color:var(--muted);font-size:13px">Noch keine Quellen.</span>';return;}
+  src=sortSources(src);
   list.innerHTML=src.map(s=>{
     const col=s.is_active?"var(--green)":"var(--faint)";
     return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px">'+
@@ -475,12 +523,69 @@ document.getElementById("srcAdd").onclick=async()=>{
   const src=await manageSrc({action:"add",platform:platform,handle:handle});
   if(src){renderSources(src);document.getElementById("srcHandle").value="";toast("Quelle hinzugefügt");}
 };
+document.getElementById("srcSort").onchange=e=>{srcSortMode=e.target.value;renderSources(SRC_CACHE);};
+
+// ---- Raw-Mentions-Viewer ----
+const mentModal=document.getElementById("mentModal");
+let MENT=[];
+const mState={q:"",platform:"",status:"",sort:"fetched_desc"};
+document.getElementById("bMentions").onclick=async()=>{ mentModal.classList.add("on"); await loadMentions(); };
+document.getElementById("mClose").onclick=()=>mentModal.classList.remove("on");
+async function loadMentions(){
+  const list=document.getElementById("mList"); list.textContent="lade…";
+  try{
+    const {data,error}=await sb.from("raw_mentions").select("*").order("fetched_at",{ascending:false}).limit(500);
+    if(error){list.textContent="Fehler: "+error.message;return;}
+    MENT=data||[];
+    const plats=[...new Set(MENT.map(m=>m.platform).filter(Boolean))].sort();
+    document.getElementById("mPlatform").innerHTML='<option value="">Alle Quellen</option>'+plats.map(p=>'<option>'+p+'</option>').join("");
+    renderMentions();
+  }catch(e){list.textContent="Fehler: "+e.message;}
+}
+function renderMentions(){
+  let r=MENT.filter(m=>{
+    if(mState.platform && m.platform!==mState.platform) return false;
+    if(mState.status==="proc" && !m.processed) return false;
+    if(mState.status==="unproc" && m.processed) return false;
+    if(mState.status==="skip" && !m.skipped) return false;
+    if(mState.q){const b=((m.title||"")+" "+(m.body||"")).toLowerCase(); if(!b.includes(mState.q.toLowerCase()))return false;}
+    return true;
+  });
+  const s=mState.sort;
+  r.sort((a,b)=>{
+    if(s==="fetched_desc")return new Date(b.fetched_at||0)-new Date(a.fetched_at||0);
+    if(s==="fetched_asc") return new Date(a.fetched_at||0)-new Date(b.fetched_at||0);
+    if(s==="posted_desc") return new Date(b.posted_at||0)-new Date(a.posted_at||0);
+    if(s==="posted_asc")  return new Date(a.posted_at||0)-new Date(b.posted_at||0);
+  });
+  const el=document.getElementById("mList");
+  if(!r.length){el.innerHTML='<span style="color:var(--muted);font-size:13px">Keine Treffer.</span>';return;}
+  el.innerHTML='<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'+r.length+' von '+MENT.length+' Erwähnungen</div>'+
+    r.slice(0,200).map(m=>{
+      const badges=(m.skipped?'<span class="tag" style="color:var(--faint)">übersprungen</span>':
+                    (m.processed?'<span class="tag" style="color:var(--green)">verarbeitet</span>':'<span class="tag" style="color:var(--amber)">offen</span>'));
+      const when=m.fetched_at?new Date(m.fetched_at).toLocaleString():"";
+      const head=(m.url?'<a href="'+m.url+'" target="_blank" rel="noopener" style="color:var(--blue)">'+esc((m.title||m.platform)).slice(0,90)+'</a>':esc(m.title||m.platform).slice(0,90));
+      return '<div style="padding:9px 0;border-bottom:1px solid var(--line)">'+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--muted)">'+
+          '<span class="mono" style="color:var(--blue);text-transform:uppercase">'+esc(m.platform)+'</span>'+
+          '<span>'+when+'</span>'+badges+
+          (m.matched_pattern?'<span class="tag">'+esc(m.matched_pattern).slice(0,40)+'</span>':'')+'</div>'+
+        '<div style="font-size:13px;margin-top:3px">'+head+'</div>'+
+        '<div style="font-size:12px;color:var(--muted);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc((m.body||"")).slice(0,240)+'</div>'+
+      '</div>';
+    }).join("");
+}
+document.getElementById("mSearch").oninput=e=>{mState.q=e.target.value;renderMentions();};
+document.getElementById("mPlatform").onchange=e=>{mState.platform=e.target.value;renderMentions();};
+document.getElementById("mStatus").onchange=e=>{mState.status=e.target.value;renderMentions();};
+document.getElementById("mSort").onchange=e=>{mState.sort=e.target.value;renderMentions();};
 document.getElementById("q").oninput=e=>{state.q=e.target.value;render();};
 document.getElementById("fCat").onchange=e=>{state.cat=e.target.value;render();};
 document.getElementById("fSort").onchange=e=>{state.sort=e.target.value;render();};
 document.querySelectorAll("#actSeg span").forEach(s=>s.onclick=()=>{s.classList.toggle("on");const a=s.dataset.a;state.acts.has(a)?state.acts.delete(a):state.acts.add(a);render();});
 document.getElementById("scrim").onclick=closeDrawer;
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");srcModal.classList.remove("on");}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");srcModal.classList.remove("on");mentModal.classList.remove("on");}});
 let toastT;function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),4200);}
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
