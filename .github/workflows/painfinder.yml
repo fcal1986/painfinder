@@ -20,7 +20,7 @@ jobs:
       - name: Quellen sammeln + verarbeiten
         env:
           SECRET: ${{ secrets.PAINFINDER_SECRET }}
-          BASE: https://DEIN_REF.supabase.co/functions/v1
+          BASE: https://rqupvcrmugfrmutcirlu.supabase.co/functions/v1
         run: |
           set -e
           for FN in scrape-hn scrape-appstore scrape-rss scrape-web scrape-reddit; do
