@@ -194,6 +194,35 @@
     #nicheModal .row{flex-direction:column}
     #nicheModal .row .btn{width:100%}
   }
+
+  /* === Score-Aufschlüsselung (erklärend) + KI-Logs === */
+  .sb .sb-total{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;margin:2px 0 10px}
+  .sb .sb-total b{font-size:30px;font-weight:700;color:var(--gold);line-height:1}
+  .sb .sb-total span{color:var(--muted);font-size:13px}
+  .sb .sb-total-d{flex-basis:100%;color:var(--muted);font-size:11.5px;margin-top:4px;line-height:1.5}
+  .sb-cap{font-size:11px;color:var(--amber);background:rgba(255,179,71,.08);border:1px solid rgba(255,179,71,.25);border-radius:8px;padding:6px 9px;margin-bottom:10px}
+  .sb-block{border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:9px;background:var(--panel2)}
+  .sb-head{display:flex;align-items:center;gap:8px}
+  .sb-n{width:18px;height:18px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:var(--panel3);color:var(--muted);font-size:11px;font-weight:600}
+  .sb-title{flex:1;font-weight:600;font-size:13px;color:var(--ink)}
+  .sb-pts{font-family:"IBM Plex Mono";font-size:12px;color:var(--gold)}
+  .sb-pts i,.sb-v i{color:var(--faint);font-style:normal}
+  .sb-desc{color:var(--muted);font-size:11.5px;line-height:1.5;margin:5px 0 8px}
+  .sb-row{padding:6px 0;border-top:1px solid var(--line)}
+  .sb-line{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .sb-l{font-size:12.5px;color:var(--ink)}
+  .sb-v{font-family:"IBM Plex Mono";font-size:12.5px;color:var(--ink)}
+  .sb-hint{color:var(--faint);font-size:11px;line-height:1.45;margin-top:2px}
+  .sb-reco{margin-top:4px;padding:10px 12px;border-radius:11px;background:rgba(232,181,77,.07);border:1px solid rgba(232,181,77,.22)}
+  .sb-reco-l{font-weight:600;font-size:13px;color:var(--gold)}
+  .sb-reco em{color:var(--muted);font-size:11px;font-style:normal}
+  .ailog{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:8px;background:var(--panel2);font-size:12px}
+  .ailog-top .ok{color:var(--green)} .ailog-top .bad{color:var(--hot)}
+  .ailog-meta{color:var(--faint);font-size:10.5px;margin-top:3px;font-family:"IBM Plex Mono"}
+  .ailog-err{color:var(--hot);font-size:11px;margin-top:4px}
+  .ailog-sc{color:var(--muted);font-size:11px;margin-top:5px;font-family:"IBM Plex Mono";word-break:break-word}
+  .ailog details{margin-top:6px} .ailog summary{cursor:pointer;color:var(--blue);font-size:11px}
+  .ailog pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px;font-size:10.5px;color:var(--muted);margin:5px 0 0;max-height:200px;overflow:auto}
 </style>
 </head>
 <body>
@@ -433,7 +462,6 @@ async function openDrawer(id){
     '<div class="bigscore"><div class="v">'+(+o.opportunity_score||0).toFixed(0)+'</div>'+
     '<span style="color:var(--muted)">/100 &middot; <b style="color:var(--ink)">'+ACT_LABEL[o.recommended_action]+'</b></span></div>'+
     (o.score_cap_reason?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 6px">'+esc(o.score_cap_reason)+'</div>':"")+
-    '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Quellenqualität '+(o.source_quality||0)+'/10 &middot; Pain '+(o.pain_intensity||0)+'/10 &middot; '+(o.source_count||0)+' Quellen &middot; '+(o.mention_count||0)+' Erwähnungen</div>'+
     '<div id="dynbody"><div class="sec"><p style="color:var(--muted)">lade Details...</p></div></div>';
   document.getElementById("scrim").classList.add("on"); d.classList.add("on");
   const [{data:ev},{data:jtbd},{data:links}] = await Promise.all([
@@ -464,16 +492,28 @@ async function openDrawer(id){
     renderPersona(o.buyer_persona)+renderCompetitors(o.competitors)+renderValidation(o.validation_plan)+
     renderNote("Marktgröße",o.market_note)+renderNote("Regulatorik",o.regulatory_note)+
     ((!o.enriched_at && o.stage>=3)?'<div class="sec"><p style="color:var(--muted);font-size:12px">Anreicherung (Persona, Wettbewerb, Validierungsplan) folgt automatisch beim nächsten Verarbeitungslauf.</p></div>':"")+
-    '<div class="sec"><div class="h">Score-Aufschluesselung</div>'+
-      '<div class="block-title">Nachfrage-Evidenz (max 45)</div><div class="bars">'+evBars+'</div>'+
-      '<div class="block-title">Founder-Fit (max 20)</div><div class="bars">'+fitBars+'</div></div>'+
+    scoreBreakdown(o)+
     (srcHtml?'<div class="sec"><div class="h">Quellen ('+(links||[]).length+')</div><div class="src">'+srcHtml+'</div></div>':"")+
     '<div class="sec"><div class="h">Aktion ueberschreiben</div><div class="prios">'+prios+'</div>'+
       '<textarea id="noteTxt" placeholder="Notiz...">'+esc(o.user_note||"")+'</textarea>'+
-      '<button class="btn primary" id="saveNote" style="margin-top:9px">Speichern</button></div>';
+      '<button class="btn primary" id="saveNote" style="margin-top:9px">Speichern</button></div>'+
+    '<div class="sec"><div class="h">KI-Auswertung</div><button class="btn" id="aiLogsBtn" style="width:100%">KI-Logs anzeigen</button><div id="aiLogs"></div></div>';
   const expBtn=d.querySelector("#expMd"); if(expBtn) expBtn.onclick=()=>exportMd(o,ev,job);
   d.querySelectorAll(".pbtn").forEach(b=>b.onclick=()=>savePrio(id,b.dataset.p));
   d.querySelector("#saveNote").onclick=()=>{const on=d.querySelector(".pbtn.on");savePrio(id,(on&&on.dataset.p)||o.recommended_action,d.querySelector("#noteTxt").value);};
+  const aiBtn=d.querySelector("#aiLogsBtn");
+  if(aiBtn) aiBtn.onclick=async()=>{
+    aiBtn.disabled=true; aiBtn.textContent="… lade";
+    const box=document.getElementById("aiLogs");
+    try{
+      const {data:logs}=await sb.from("ai_evaluation_logs")
+        .select("created_at,model,prompt_version,prompt_type,success,error_message,scores,latency_ms,total_tokens,user_prompt,raw_response")
+        .eq("opportunity_id",id).order("created_at",{ascending:false}).limit(3);
+      box.innerHTML=(logs&&logs.length)?logs.map(renderLog).join("")
+        :'<p style="color:var(--muted);font-size:12px;margin-top:6px">Noch keine KI-Logs für diese Chance — erscheinen nach einem Verarbeitungslauf mit v3.</p>';
+    }catch(e){ box.innerHTML='<p style="color:var(--hot);font-size:12px;margin-top:6px">Fehler: '+esc(e.message||String(e))+'</p>'; }
+    aiBtn.disabled=false; aiBtn.textContent="KI-Logs aktualisieren";
+  };
 }
 const nicheModal=document.getElementById("nicheModal");
 document.getElementById("bNiche").onclick=()=>{ nicheModal.classList.add("on"); loadNiche(); };
@@ -560,6 +600,48 @@ function exportMd(o,ev,job){
   catch(e){toast("Export-Fehler: "+e.message);}
 }
 function bar(k,l,v,cls){v=v||0;return '<div class="brow"><span>'+l+'</span><span class="track"><span class="fill '+cls+'" style="width:'+(v*10)+'%"></span></span><b>'+v+'</b></div>';}
+function sbRow(label,val,max,hint){var v=(val==null?0:val);
+  return '<div class="sb-row"><div class="sb-line"><span class="sb-l">'+label+'</span><span class="sb-v">'+v+(max?'<i>/'+max+'</i>':'')+'</span></div>'+(hint?'<div class="sb-hint">'+hint+'</div>':'')+'</div>';}
+function sbBlock(n,title,pts,max,desc,rows){
+  return '<div class="sb-block"><div class="sb-head"><span class="sb-n">'+n+'</span><span class="sb-title">'+title+'</span><span class="sb-pts">'+pts+'<i>/'+max+'</i></span></div><div class="sb-desc">'+desc+'</div>'+rows+'</div>';}
+function recoReason(o){var a=o.computed_action||o.recommended_action;
+  if(a==="test_now") return "Stufe 4 mit gutem Founder-Fit (≥6/10) — bereit für einen echten Test mit zahlenden Nutzern.";
+  if(a==="validate") return "Stufe 4 (Beleg + Geld-Signal + B2B), aber Founder-Fit unter 6/10 — zuerst mit echten Nutzern validieren.";
+  if(a==="research") return "Stufe 3: mindestens ein Beleg, aber noch kein klares B2B-Zahlungssignal — weiter recherchieren.";
+  if(a==="observe")  return "Mehrfach erwähnt bzw. aus mehreren Quellen, aber noch ohne Zahlungs-Beleg — beobachten, bis Evidenz kommt.";
+  return "Zu wenig Signal oder Beleg — vorerst ignorieren.";}
+function scoreBreakdown(o){
+  var ev=sbRow("Zahlungs-Evidenz",o.spending_evidence,10,"Zahlen Nutzer bereits — oder würden sie zahlen?")
+    +sbRow("Anbieter-Frust",o.incumbent_frustration,10,"Wie groß ist der Ärger mit bestehenden Tools?")
+    +sbRow("Geschäftswert",o.business_value,10,"Wie wichtig ist das Problem wirtschaftlich?");
+  var fit=sbRow("Wissensvorteil",o.fit_knowledge,10,"Wie gut kennst du das Thema?")
+    +sbRow("Kundenzugang",o.fit_access,10,"Wie schnell erreichst du echte Nutzer?")
+    +sbRow("Umsetzbarkeit",o.fit_buildability,10,"Wie realistisch ist ein erster MVP?");
+  var conf=sbRow("Quellen",o.source_count,null,"Aus wie vielen verschiedenen Quellen kommt das Signal?")
+    +sbRow("Erwähnungen",o.mention_count,null,"Wie oft wurde das Problem erkannt?")
+    +sbRow("Quellenqualität",o.source_quality,10,"Wie vertrauenswürdig ist die beste Quelle?")
+    +sbRow("Pain",o.pain_intensity,10,"Wie stark wirkt der beschriebene Schmerz?");
+  var over=(o.computed_action&&o.recommended_action!==o.computed_action)?' <em>(manuell überschrieben)</em>':'';
+  return '<div class="sec sb"><div class="h">Score-Aufschlüsselung</div>'+
+    '<div class="sb-total"><b>'+(+o.opportunity_score||0).toFixed(0)+'</b><span>/100</span>'+
+      '<div class="sb-total-d">Wie attraktiv die Chance insgesamt ist — Summe der drei Blöcke unten, anschließend gedeckelt.</div></div>'+
+    (o.score_cap_reason?'<div class="sb-cap">'+esc(o.score_cap_reason)+'</div>':'')+
+    sbBlock("1","Nachfrage-Evidenz",(o.evidence_block_pts||0),45,"Wie stark der Markt das Problem schon bestätigt: Zahlungsbereitschaft, Frust mit Anbietern, wirtschaftlicher Nutzen.",ev)+
+    sbBlock("2","Founder-Fit",(o.fit_block_pts||0),20,"Wie gut die Chance zu deinem Wissen, deinem Zugang und deiner Bau-Fähigkeit passt.",fit)+
+    sbBlock("3","Quellenbestätigung",(o.confirm_block_pts||0),35,"Wie breit das Problem durch Quellen und Erwähnungen abgesichert ist.",conf)+
+    '<div class="sb-reco"><span class="sb-reco-l">Empfehlung: '+(ACT_LABEL[o.recommended_action]||o.recommended_action)+'</span>'+over+
+      '<div class="sb-hint">'+recoReason(o)+'</div></div></div>';}
+function logText(r){try{var t=(r.content||[]).filter(function(c){return c.type==="text";}).map(function(c){return c.text;}).join("\n");return t||JSON.stringify(r);}catch(_){return JSON.stringify(r);}}
+function renderLog(l){
+  var when=new Date(l.created_at).toLocaleString("de-DE");
+  var sc=l.scores?Object.keys(l.scores).map(function(k){return k+":"+l.scores[k];}).join(" · "):"—";
+  var resp=l.raw_response?logText(l.raw_response):"";
+  return '<div class="ailog"><div class="ailog-top"><span class="'+(l.success?"ok":"bad")+'">'+(l.success?"✓":"✕")+'</span> <b>'+esc(l.prompt_version||"")+'</b> · '+esc(l.prompt_type||"")+'</div>'+
+    '<div class="ailog-meta">'+esc(l.model||"")+' · '+when+' · '+(l.latency_ms||0)+' ms · '+(l.total_tokens||0)+' Tok</div>'+
+    (l.error_message?'<div class="ailog-err">'+esc(l.error_message)+'</div>':'')+
+    '<div class="ailog-sc">'+esc(sc)+'</div>'+
+    (l.user_prompt?'<details><summary>Prompt</summary><pre>'+esc(l.user_prompt.slice(0,500))+'</pre></details>':'')+
+    (resp?'<details><summary>Claude-Antwort</summary><pre>'+esc(resp.slice(0,700))+'</pre></details>':'')+'</div>';}
 function closeDrawer(){document.getElementById("scrim").classList.remove("on");document.getElementById("drawer").classList.remove("on");}
 async function savePrio(id,prio,note){
   const { error }=await sb.from("user_notes").insert({opportunity_id:id,priority:prio,note:(note!=null?note:null)});
