@@ -144,6 +144,56 @@
   .pdet{flex:0 0 auto;color:var(--muted);font-size:11px;text-align:right;max-width:150px}
   .spin{display:inline-block;animation:pfspin 1s linear infinite}
   @keyframes pfspin{to{transform:rotate(360deg)}}
+
+  /* === „Nische einrichten" — größere, komfortablere Eingaben (eingegrenzt auf #nicheModal) === */
+  #nicheModal .box{width:100%;max-width:560px;padding:28px 30px 24px}
+
+  #nicheModal .block-title{
+    font-size:11px;letter-spacing:1px;color:var(--gold);
+    margin:26px 0 14px !important;padding-bottom:10px;border-bottom:1px solid var(--line);
+  }
+  #nicheModal .block-title:first-of-type{margin-top:8px !important}
+
+  #nicheModal .nlbl{font-size:13px;font-weight:500;color:var(--muted);margin:18px 0 7px;letter-spacing:.1px}
+  #nicheModal .nlbl .conf{font-weight:400}
+
+  #nicheModal input{
+    width:100%;height:46px;padding:0 15px;font-size:15px;line-height:1.5;
+    border-radius:13px;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+    transition:border-color .15s,box-shadow .15s,background .15s;
+  }
+  #nicheModal textarea{
+    width:100%;min-height:104px !important;padding:13px 15px;font-size:15px;line-height:1.65;
+    border-radius:13px;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+    resize:vertical;transition:border-color .15s,box-shadow .15s,background .15s;
+  }
+  #nicheModal #nKnow{min-height:120px !important}
+
+  #nicheModal input::placeholder,#nicheModal textarea::placeholder{color:var(--faint);opacity:1}
+
+  #nicheModal input:hover,#nicheModal textarea:hover{border-color:rgba(232,181,77,.35);background:var(--panel)}
+  #nicheModal input:focus,#nicheModal textarea:focus{
+    border-color:rgba(232,181,77,.65);box-shadow:0 0 0 3px rgba(232,181,77,.18);background:var(--panel2);
+  }
+
+  #nicheModal .row{display:flex;gap:12px;margin-top:24px !important}
+  #nicheModal .row .btn{
+    flex:1;height:48px;border-radius:14px;font-size:14.5px;font-weight:600;
+    display:inline-flex;align-items:center;justify-content:center;transition:.15s;
+  }
+  #nicheModal #nClose{background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+  #nicheModal #nClose:hover{background:var(--panel3);color:var(--ink)}
+  #nicheModal #nSave{background:var(--gold);color:#1c1407;border:1px solid transparent;
+    box-shadow:0 6px 20px -8px rgba(232,181,77,.5)}
+  #nicheModal #nSave:hover{background:#f0c266}
+  #nicheModal #nSave:active{transform:translateY(1px)}
+  #nicheModal #nSave:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(232,181,77,.30)}
+
+  @media (max-width:480px){
+    #nicheModal .box{padding:22px 18px}
+    #nicheModal .row{flex-direction:column}
+    #nicheModal .row .btn{width:100%}
+  }
 </style>
 </head>
 <body>
