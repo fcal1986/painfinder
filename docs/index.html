@@ -223,6 +223,15 @@
   .ailog-sc{color:var(--muted);font-size:11px;margin-top:5px;font-family:"IBM Plex Mono";word-break:break-word}
   .ailog details{margin-top:6px} .ailog summary{cursor:pointer;color:var(--blue);font-size:11px}
   .ailog pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px;font-size:10.5px;color:var(--muted);margin:5px 0 0;max-height:200px;overflow:auto}
+
+  /* === KI-Bewertungsstatus-Badge === */
+  .kibadge-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
+  .kibadge{display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;letter-spacing:.02em;padding:3px 8px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--muted)}
+  .ki-evaluated{color:var(--green);background:rgba(92,224,143,.10);border-color:rgba(92,224,143,.30)}
+  .ki-failed{color:var(--hot);background:rgba(255,107,93,.10);border-color:rgba(255,107,93,.30)}
+  .ki-needs_reevaluation{color:var(--amber);background:rgba(255,179,71,.10);border-color:rgba(255,179,71,.30)}
+  .ki-not_evaluated{color:var(--faint)}
+  .kidetail{font-size:10.5px;color:var(--faint);font-family:"IBM Plex Mono"}
 </style>
 </head>
 <body>
@@ -396,6 +405,15 @@ const state={q:"",cat:"",sort:"score",acts:new Set()};
 const EV_FIELDS=[["spending_evidence","Zahlungs-Evidenz"],["incumbent_frustration","Anbieter-Frust"],["business_value","Geschaeftswert"]];
 const FIT_FIELDS=[["fit_knowledge","Wissensvorteil"],["fit_access","Kundenzugang"],["fit_buildability","Umsetzbarkeit"]];
 const ACT_LABEL={test_now:"Sofort testen",validate:"Validieren",research:"Recherchieren",observe:"Beobachten",ignore:"Ignorieren"};
+const KI_LABEL={not_evaluated:"KI: offen",evaluated:"KI: bewertet",failed:"KI: fehlgeschlagen",needs_reevaluation:"KI: Neubewertung markiert"};
+function kiBadge(o){
+  var st=o.ai_evaluation_status||"not_evaluated";
+  var when=o.ai_evaluated_at?new Date(o.ai_evaluated_at).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"";
+  var detail="";
+  if(st==="evaluated") detail=(o.ai_evaluation_prompt_version?" · "+esc(o.ai_evaluation_prompt_version):"")+(when?" · "+when:"");
+  else if(st==="failed") detail=o.ai_evaluation_error?" · "+esc(String(o.ai_evaluation_error).slice(0,80)):"";
+  return '<span class="kibadge ki-'+st+'">'+(KI_LABEL[st]||st)+'</span>'+(detail?'<span class="kidetail">'+detail+'</span>':'');
+}
 const EV_TYPE_LABEL={spending_disclosed:"Zahlt bereits",paid_alternative_named:"Bezahltes Tool genannt",alternative_hunting:"Sucht Alternative",switching_frustration:"Wechsel-Frust",urgent_need:"Dringender Bedarf",loss_disclosed:"Verlust beziffert",hiring_for_problem:"Stellt dafuer ein"};
 async function load(){
   const { data, error } = await sb.from("dashboard_opportunities").select("*");
@@ -462,6 +480,7 @@ async function openDrawer(id){
     '<div class="bigscore"><div class="v">'+(+o.opportunity_score||0).toFixed(0)+'</div>'+
     '<span style="color:var(--muted)">/100 &middot; <b style="color:var(--ink)">'+ACT_LABEL[o.recommended_action]+'</b></span></div>'+
     (o.score_cap_reason?'<div style="font-size:11px;color:var(--amber);margin:-4px 0 6px">'+esc(o.score_cap_reason)+'</div>':"")+
+    '<div class="kibadge-row">'+kiBadge(o)+'</div>'+
     '<div id="dynbody"><div class="sec"><p style="color:var(--muted)">lade Details...</p></div></div>';
   document.getElementById("scrim").classList.add("on"); d.classList.add("on");
   const [{data:ev},{data:jtbd},{data:links}] = await Promise.all([
@@ -497,7 +516,11 @@ async function openDrawer(id){
     '<div class="sec"><div class="h">Aktion ueberschreiben</div><div class="prios">'+prios+'</div>'+
       '<textarea id="noteTxt" placeholder="Notiz...">'+esc(o.user_note||"")+'</textarea>'+
       '<button class="btn primary" id="saveNote" style="margin-top:9px">Speichern</button></div>'+
-    '<div class="sec"><div class="h">KI-Auswertung</div><button class="btn" id="aiLogsBtn" style="width:100%">KI-Logs anzeigen</button><div id="aiLogs"></div></div>';
+    '<div class="sec"><div class="h">KI-Auswertung</div>'+
+      '<div class="kibadge-row" style="margin-bottom:8px">'+kiBadge(o)+'</div>'+
+      '<button class="btn" id="aiLogsBtn" style="width:100%">KI-Logs anzeigen</button><div id="aiLogs"></div>'+
+      '<button class="btn" id="reEvalBtn" style="width:100%;margin-top:8px">Für KI-Neubewertung markieren</button>'+
+      '<p style="color:var(--faint);font-size:11px;margin-top:6px">Schickt diese Chance beim nächsten Verarbeitungslauf erneut an Claude (kann API-Kosten verursachen).</p></div>';
   const expBtn=d.querySelector("#expMd"); if(expBtn) expBtn.onclick=()=>exportMd(o,ev,job);
   d.querySelectorAll(".pbtn").forEach(b=>b.onclick=()=>savePrio(id,b.dataset.p));
   d.querySelector("#saveNote").onclick=()=>{const on=d.querySelector(".pbtn.on");savePrio(id,(on&&on.dataset.p)||o.recommended_action,d.querySelector("#noteTxt").value);};
@@ -513,6 +536,25 @@ async function openDrawer(id){
         :'<p style="color:var(--muted);font-size:12px;margin-top:6px">Noch keine KI-Logs für diese Chance — erscheinen nach einem Verarbeitungslauf mit v3.</p>';
     }catch(e){ box.innerHTML='<p style="color:var(--hot);font-size:12px;margin-top:6px">Fehler: '+esc(e.message||String(e))+'</p>'; }
     aiBtn.disabled=false; aiBtn.textContent="KI-Logs aktualisieren";
+  };
+  const reBtn=d.querySelector("#reEvalBtn");
+  if(reBtn) reBtn.onclick=async()=>{
+    if(!confirm("Diese Opportunity wird beim nächsten Verarbeitungslauf erneut an Claude geschickt. Das kann API-Kosten verursachen. Fortfahren?")) return;
+    const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return;}
+    reBtn.disabled=true; reBtn.textContent="… markiere";
+    try{
+      const res=await fetch(FN+"mark-ai-reevaluation",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify({opportunity_id:id})});
+      const txt=await res.text(); let j=null; try{j=JSON.parse(txt);}catch(_){}
+      dbg("mark-ai-reevaluation","HTTP "+res.status,j!==null?j:txt,res.ok&&!(j&&j.error));
+      if(res.status===401){sessionStorage.removeItem("pf_secret");toast("Secret falsch.");}
+      else if(!j||j.error){toast("Fehler: "+((j&&j.error)||"unerwartet"));}
+      else{
+        toast("Für Neubewertung markiert ✓");
+        o.ai_evaluation_status="needs_reevaluation"; o.needs_ai_reevaluation=true; o.ai_evaluation_error=null;
+        const row=d.querySelector(".sec .kibadge-row"); if(row) row.innerHTML=kiBadge(o);
+      }
+    }catch(e){toast("Fehler: "+(e.message||e));}
+    reBtn.disabled=false; reBtn.textContent="Für KI-Neubewertung markieren";
   };
 }
 const nicheModal=document.getElementById("nicheModal");
