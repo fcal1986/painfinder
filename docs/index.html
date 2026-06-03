@@ -10,14 +10,21 @@
 <style>
   :root{
     --bg:#0b0a0d; --panel:#16141b; --panel2:#1e1b25; --panel3:#262230;
-    --ink:#f0ecf4; --muted:#928ca0; --faint:#615b70; --line:#2c2836;
+    --ink:#f0ecf4; --muted:#928ca0; --faint:#615b70; --line:#2c2836; --line2:#3a3548;
     --gold:#e8b54d; --green:#5ce08f; --blue:#67c5ff; --hot:#ff6b5d; --amber:#ffb347;
-    --r:14px; --shadow:0 24px 70px -28px rgba(0,0,0,.85);
+    --r:14px; --shadow:0 24px 70px -28px rgba(0,0,0,.85); --header-bg:rgba(11,10,13,.82);
   }
+  html[data-theme="light"]{
+    --bg:#f4f3f0; --panel:#ffffff; --panel2:#f3f1ed; --panel3:#e9e7e2;
+    --ink:#1d1b22; --muted:#5d5a66; --faint:#8c8893; --line:#e6e3dc; --line2:#d7d3ca;
+    --gold:#b9851c; --green:#1f9d57; --blue:#1f7fc0; --hot:#d23b2c; --amber:#b9791f;
+    --header-bg:rgba(255,255,255,.82); --shadow:0 24px 70px -34px rgba(20,20,30,.22);
+  }
+  html[data-theme="light"] body{background-image:radial-gradient(800px 420px at 90% -8%, rgba(185,133,28,.10), transparent),radial-gradient(700px 500px at -8% 108%, rgba(31,157,87,.06), transparent)}
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",sans-serif}
   body{background-image:radial-gradient(800px 420px at 90% -8%, rgba(232,181,77,.08), transparent),radial-gradient(700px 500px at -8% 108%, rgba(92,224,143,.05), transparent);background-attachment:fixed}
-  header{position:sticky;top:0;z-index:40;backdrop-filter:blur(14px);background:rgba(11,10,13,.82);border-bottom:1px solid var(--line)}
+  header{position:sticky;top:0;z-index:40;backdrop-filter:blur(14px);background:var(--header-bg);border-bottom:1px solid var(--line)}
   .bar{max-width:1280px;margin:0 auto;padding:16px 22px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
   .logo{font-family:"Fraunces",serif;font-weight:600;font-size:25px;letter-spacing:-.4px}
   .logo b{color:var(--gold)}
@@ -280,6 +287,7 @@
 </style>
 </head>
 <body>
+<script>try{if(localStorage.getItem('pf_theme')==='light')document.documentElement.setAttribute('data-theme','light');}catch(e){}</script>
 <header>
   <div class="bar">
     <div class="logo">Pain<b>Finder</b><span>opportunity engine · mvp</span></div>
@@ -297,6 +305,7 @@
       <button class="btn" id="bImport">＋ Bewertungen</button>
       <button class="btn" id="bMentions">📄 Mentions</button>
       <button class="btn" id="bProcess">⚙ Verarbeiten</button>
+      <button class="btn" id="bTheme" title="Hell / Dunkel">🌙</button>
       <button class="btn" id="bDebug" title="Debug-Modus">🐞</button>
     </div>
   </div>
@@ -1262,6 +1271,23 @@ async function editNiche(id){
     if(r2&&r2.ok){ toast("Gespeichert ✓"); await loadNiches(); openNiches(); } else toast("Fehler beim Speichern");
   };
 }
+
+// ===== Theme (Hell/Dunkel) =====
+function applyTheme(t){
+  if(t==="light") document.documentElement.setAttribute("data-theme","light");
+  else document.documentElement.removeAttribute("data-theme");
+  var b=document.getElementById("bTheme"); if(b) b.textContent=(t==="light")?"\u2600\uFE0F":"\uD83C\uDF19";
+}
+(function(){
+  var saved=null; try{ saved=localStorage.getItem("pf_theme"); }catch(_){ }
+  applyTheme(saved==="light"?"light":"dark");
+  var b=document.getElementById("bTheme");
+  if(b) b.onclick=function(){
+    var cur=document.documentElement.getAttribute("data-theme")==="light"?"light":"dark";
+    var next=cur==="light"?"dark":"light";
+    applyTheme(next); try{ localStorage.setItem("pf_theme",next); }catch(_){ }
+  };
+})();
 
 initApp();
 </script>
