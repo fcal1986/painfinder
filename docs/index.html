@@ -106,7 +106,7 @@
   textarea{width:100%;margin-top:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;color:var(--ink);font-family:inherit;font-size:13px;padding:10px;min-height:64px;resize:vertical}
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:150;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);padding:20px}
   .modal.on{display:flex}
-  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;max-width:480px;width:100%;box-shadow:var(--shadow)}
+  .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;max-width:480px;width:100%;box-shadow:var(--shadow);max-height:88vh;overflow-y:auto;overflow-x:hidden}
   .modal h3{font-family:"Fraunces",serif;font-weight:600;margin:0 0 6px;font-size:20px}
   .modal p{font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 14px}
   .modal code{font-family:"IBM Plex Mono";font-size:11.5px;background:var(--panel3);padding:2px 6px;border-radius:5px;color:var(--gold)}
@@ -146,7 +146,7 @@
   @keyframes pfspin{to{transform:rotate(360deg)}}
 
   /* === „Nische einrichten" — größere, komfortablere Eingaben (eingegrenzt auf #nicheModal) === */
-  #nicheModal .box{width:100%;max-width:560px;padding:28px 30px 24px}
+  #nicheModal .box{width:100%;max-width:560px;padding:28px 30px 24px;max-height:88vh;overflow-y:auto;overflow-x:hidden}
 
   #nicheModal .block-title{
     font-size:11px;letter-spacing:1px;color:var(--gold);
