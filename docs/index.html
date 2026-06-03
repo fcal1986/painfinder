@@ -1173,7 +1173,16 @@ async function openSettings(){
   try{
     var q=sb.from("app_settings").select("*").eq("is_sensitive",false);
     q=NICHE?q.or("niche_id.is.null,niche_id.eq."+NICHE):q.is("niche_id",null);
-    var res=await q; var data=res.data||[];
+    var res=await q;
+    if(res.error) dbg("app_settings","Lesefehler (anon)",res.error.message,false);
+    var data=res.data||[];
+    // Fallback: anon liest nichts, aber Secret vorhanden -> über Function laden
+    if(!data.length){
+      var sec=(typeof sessionStorage!=="undefined")?sessionStorage.getItem("pf_secret"):null;
+      if(sec){ var rf=await callFn("manage-settings",{action:"list",niche_id:NICHE});
+        if(rf&&rf.ok&&rf.j&&rf.j.settings) data=rf.j.settings; }
+    }
+    if(!data.length){ box.innerHTML='<p style="color:var(--muted)">Keine Einstellungen gefunden. Bitte <b>v4b_grants.sql</b> ausführen (Leserechte) und <b>manage-settings</b> deployen.</p>'; return; }
     var map={};
     data.filter(function(s){return s.niche_id==null;}).forEach(function(s){map[s.key]=Object.assign({},s);});
     data.filter(function(s){return s.niche_id!=null;}).forEach(function(s){map[s.key]=Object.assign({},map[s.key]||{},s);});
