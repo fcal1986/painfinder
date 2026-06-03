@@ -275,6 +275,8 @@
   .nc-main b{font-size:15px}
   .nc-act{gap:8px}
   .nc-act .btn{height:38px;padding:0 14px;font-size:12px;border-radius:11px}
+
+  .prog-sub{font-family:"IBM Plex Mono";font-size:11px;color:var(--gold);padding:7px 14px 9px;border-bottom:1px solid var(--line);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -325,6 +327,7 @@
 <div id="toast"></div>
 <div class="prog" id="prog">
   <div class="prog-head"><span id="progTitle">Arbeite…</span><button id="progX" title="schließen">&times;</button></div>
+  <div class="prog-sub" id="progSub"></div>
   <div class="prog-list" id="progList"></div>
 </div>
 <div id="dbg">
@@ -763,7 +766,7 @@ function getSecret(){
 // ---- Transparenter Fortschritt -------------------------------------------
 let _pi=0;
 const progEl=()=>document.getElementById("prog");
-function progOpen(title){const l=document.getElementById("progList");l.innerHTML="";document.getElementById("progTitle").textContent=title;document.getElementById("progX").style.display="none";progEl().classList.add("on");}
+function progOpen(title){const l=document.getElementById("progList");l.innerHTML="";document.getElementById("progTitle").textContent=title;var ps=document.getElementById("progSub");if(ps)ps.textContent="Nische: "+nicheName();document.getElementById("progX").style.display="none";progEl().classList.add("on");}
 function progAdd(label){const id="prw"+(_pi++);const l=document.getElementById("progList");l.insertAdjacentHTML("beforeend",'<div class="prow" id="'+id+'"><span class="pic spin">&#10227;</span><span class="plab">'+esc(label)+'</span><span class="pdet"></span></div>');l.scrollTop=l.scrollHeight;return id;}
 function progUpdate(id,status,detail){const row=document.getElementById(id);if(!row)return;const ic=row.querySelector(".pic");ic.className="pic "+(status||"");ic.innerHTML=status==="ok"?"&#10003;":status==="err"?"&#10005;":status==="warn"?"&#9888;":"&#10227;";if(detail!=null)row.querySelector(".pdet").textContent=detail;}
 function progFinish(msg){document.getElementById("progTitle").textContent=msg||"Fertig";document.getElementById("progX").style.display="block";}
@@ -1121,6 +1124,12 @@ if(location.search.indexOf("debug")>=0) openDbg();
 
 
 // ===== Nischen-Switcher + Settings + Nischen-Verwaltung =====
+function nicheName(){
+  for(var i=0;i<NICHES.length;i++){ if(NICHES[i].id===NICHE) return NICHES[i].name; }
+  var sel=document.getElementById("nicheSwitch");
+  if(sel&&sel.selectedOptions&&sel.selectedOptions[0]&&sel.selectedOptions[0].textContent) return sel.selectedOptions[0].textContent;
+  return "—";
+}
 async function loadNiches(){
   try{ const {data,error}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");
     if(error){ dbg("niches","Lesefehler (anon)",error.message,false); }
