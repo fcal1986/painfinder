@@ -598,7 +598,7 @@ async function openDrawer(id){
   };
 }
 const nicheModal=document.getElementById("nicheModal");
-document.getElementById("bNiche").onclick=()=>{ nicheModal.classList.add("on"); loadNiche(); };
+document.getElementById("bNiche").onclick=()=>{ editNiche(NICHE); };
 document.getElementById("nClose").onclick=()=>nicheModal.classList.remove("on");
 async function niche(payload){
   const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return null;}
@@ -1100,8 +1100,16 @@ if(location.search.indexOf("debug")>=0) openDbg();
 
 // ===== Nischen-Switcher + Settings + Nischen-Verwaltung =====
 async function loadNiches(){
-  try{ const {data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at"); NICHES=data||[]; }
-  catch(_){ NICHES=[]; }
+  try{ const {data,error}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");
+    if(error){ dbg("niches","Lesefehler (anon)",error.message,false); }
+    NICHES=data||[]; }
+  catch(e){ dbg("niches","Ausnahme",String(e.message||e),false); NICHES=[]; }
+  // Fallback: falls anon nichts liest, aber ein Secret vorliegt -> über Function laden
+  if(!NICHES.length){
+    var sec=(typeof sessionStorage!=="undefined")?sessionStorage.getItem("pf_secret"):null;
+    if(sec){ try{ var rr=await callFn("manage-niches",{action:"list"});
+      if(rr&&rr.ok&&rr.j&&rr.j.niches) NICHES=rr.j.niches.filter(function(n){return !n.is_archived;}); }catch(_){ } }
+  }
   const sel=document.getElementById("nicheSwitch");
   if(sel) sel.innerHTML=NICHES.map(function(n){return '<option value="'+n.id+'">'+esc(n.name)+'</option>';}).join("");
   const saved=(typeof localStorage!=="undefined")?localStorage.getItem("active_niche_id"):null;
@@ -1177,17 +1185,51 @@ async function openNiches(){
 function nicheCard(n){
   return '<div class="ncard"><div class="nc-main"><b>'+esc(n.name)+'</b>'+(n.is_archived?' <span class="nbadge">archiviert</span>':'')+
     (n.description?'<div class="nc-desc">'+esc(n.description)+'</div>':'')+'</div><div class="nc-act">'+
-    '<button class="btn" data-na="rename" data-id="'+n.id+'">Umbenennen</button>'+
+    '<button class="btn" data-na="edit" data-id="'+n.id+'">Bearbeiten</button>'+
+    '<button class="btn" data-na="duplicate" data-id="'+n.id+'">Kopieren</button>'+
     (n.is_archived?'<button class="btn" data-na="unarchive" data-id="'+n.id+'">Aktivieren</button>'
                   :'<button class="btn" data-na="archive" data-id="'+n.id+'">Archivieren</button>')+
     '<button class="btn" data-na="delete" data-id="'+n.id+'">Löschen</button></div></div>';
 }
 async function nicheAction(action,id){
+  if(action==="edit"){ editNiche(id); return; }
   var payload={action:action,id:id};
-  if(action==="rename"){ var nn=prompt("Neuer Name:"); if(!nn)return; payload.action="update"; payload.name=nn; }
   if(action==="delete"){ if(!confirm("Diese Aktion löscht die Nische und ALLE zugehörigen Daten (Quellen, Mentions, Opportunities). Fortfahren?")) return; }
   var r=await callFn("manage-niches",payload);
-  if(r&&r.ok){ toast("OK ✓"); await loadNiches(); openNiches(); await load(); } else toast("Fehler");
+  if(r&&r.ok){ toast(action==="duplicate"?"Kopiert ✓":"OK ✓"); await loadNiches(); openNiches(); await load(); } else toast("Fehler");
+}
+function val(id){ var e=document.getElementById(id); return e?e.value:""; }
+function editForm(n,p){
+  n=n||{}; p=p||{};
+  return '<div class="block-title">Nische bearbeiten</div>'+
+   '<label class="nlbl">Name</label><input id="enName" value="'+esc(n.name||"")+'">'+
+   '<label class="nlbl">Beschreibung</label><input id="enDesc" value="'+esc(n.description||"")+'">'+
+   '<label class="nlbl">Zielgruppe</label><input id="enAud" value="'+esc(n.target_audience||"")+'">'+
+   '<label class="nlbl">Suchbegriffe <span class="conf">mit Semikolon</span></label><textarea id="enKw">'+esc((n.keywords||[]).join("; "))+'</textarea>'+
+   '<label class="nlbl">Anbieter/Konkurrenten <span class="conf">mit Semikolon</span></label><textarea id="enComp">'+esc((n.competitors||[]).join("; "))+'</textarea>'+
+   '<div class="block-title" style="margin-top:16px">Founder-Profil dieser Nische</div>'+
+   '<label class="nlbl">Womit kennst du dich aus? <span class="conf">mit Semikolon</span></label><textarea id="enKnow">'+esc((p.knowledge||[]).join("; "))+'</textarea>'+
+   '<label class="nlbl">Wen erreichst du in 30 Tagen?</label><input id="enReach" value="'+esc(p.reachable||"")+'">'+
+   '<label class="nlbl">Was kannst du als MVP bauen?</label><input id="enBuild" value="'+esc(p.can_build||"")+'">'+
+   '<div class="row" style="margin-top:16px"><button class="btn" id="enBack" style="flex:1">Zurück</button><button class="btn primary" id="enSave" style="flex:1">Speichern</button></div>';
+}
+async function editNiche(id){
+  if(!id){ toast("Keine Nische ausgewählt"); openNiches(); return; }
+  document.getElementById("nichesModal").classList.add("on");
+  var box=document.getElementById("nichesBody"); box.innerHTML='<p style="color:var(--muted)">lade…</p>';
+  var r=await callFn("manage-niches",{action:"get",id:id});
+  if(!r||!r.ok){ box.innerHTML='<p style="color:var(--hot)">Fehler beim Laden</p>'; return; }
+  box.innerHTML=editForm(r.j&&r.j.niche, r.j&&r.j.profile);
+  document.getElementById("enBack").onclick=openNiches;
+  document.getElementById("enSave").onclick=async function(){
+    var btn=this; btn.disabled=true; btn.textContent="… speichere";
+    var r2=await callFn("manage-niches",{action:"save",id:id,
+      name:val("enName"),description:val("enDesc"),target_audience:val("enAud"),
+      keywords:val("enKw"),competitors:val("enComp"),
+      knowledge:val("enKnow"),reachable:val("enReach"),can_build:val("enBuild")});
+    btn.disabled=false; btn.textContent="Speichern";
+    if(r2&&r2.ok){ toast("Gespeichert ✓"); await loadNiches(); openNiches(); } else toast("Fehler beim Speichern");
+  };
 }
 
 initApp();
