@@ -232,6 +232,25 @@
   .ki-needs_reevaluation{color:var(--amber);background:rgba(255,179,71,.10);border-color:rgba(255,179,71,.30)}
   .ki-not_evaluated{color:var(--faint)}
   .kidetail{font-size:10.5px;color:var(--faint);font-family:"IBM Plex Mono"}
+
+  /* === Nischen-Switcher, Settings, Nischen-Verwaltung === */
+  .nswitch{height:36px;min-width:150px;max-width:220px;padding:0 30px 0 12px;font-size:13px;border-radius:9px;background:var(--panel2);border:1px solid var(--line2);color:var(--ink)}
+  .set-cat{font-family:"IBM Plex Mono";font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin:16px 0 8px;border-bottom:1px solid var(--line);padding-bottom:6px}
+  .set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .set-meta{flex:1} .set-label{font-size:13px;color:var(--ink)} .set-desc{font-size:11px;color:var(--faint);margin-top:2px;line-height:1.45}
+  .set-num{width:90px;height:38px;text-align:right}
+  .switch{position:relative;display:inline-block;width:44px;height:24px;flex:none;cursor:pointer}
+  .switch input{opacity:0;width:0;height:0}
+  .track2{position:absolute;inset:0;background:var(--panel3);border:1px solid var(--line2);border-radius:99px;transition:.18s}
+  .track2:before{content:"";position:absolute;height:18px;width:18px;left:2px;top:2px;background:var(--muted);border-radius:50%;transition:.18s}
+  .switch input:checked + .track2{background:rgba(232,181,77,.30);border-color:var(--gold)}
+  .switch input:checked + .track2:before{transform:translateX(20px);background:var(--gold)}
+  .ncard{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
+  .nc-main b{font-size:14px} .nc-desc{font-size:11px;color:var(--faint);margin-top:3px}
+  .nc-act{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .nc-act .btn{height:30px;padding:0 9px;font-size:11px}
+  .nbadge{font-size:10px;color:var(--amber);border:1px solid rgba(255,179,71,.3);border-radius:6px;padding:1px 6px;margin-left:6px}
+  .ncreate{margin-top:16px} .ncreate input,.ncreate textarea{margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -244,6 +263,9 @@
       <div class="stat"><div class="n" id="stTop">–</div><div class="l">Top-Score</div></div>
     </div>
     <div class="actions">
+      <select id="nicheSwitch" class="nswitch" title="Aktive Nische"></select>
+      <button class="btn" id="bNiches">Nischen</button>
+      <button class="btn" id="bSettings" title="Einstellungen">⚙ Einstellungen</button>
       <button class="btn" id="bNiche">🎯 Nische</button>
       <button class="btn primary" id="bSearch">🔍 Durchsuchen</button>
       <button class="btn" id="bSources">🗂 Quellen</button>
@@ -310,6 +332,22 @@
       <button class="btn" id="csvCancel" style="flex:1">Schließen</button>
       <button class="btn primary" id="csvGo" style="flex:1" disabled>CSV importieren &amp; verarbeiten</button>
     </div>
+  </div>
+</div>
+<div class="modal" id="settingsModal">
+  <div class="box" style="max-width:560px">
+    <h3>Einstellungen</h3>
+    <p>Gelten für die aktive Nische (globale Werte als Fallback). Änderungen werden sofort gespeichert.</p>
+    <div id="setBody"><p style="color:var(--muted)">lade…</p></div>
+    <div class="row" style="margin-top:14px"><button class="btn" id="setClose" style="flex:1">Schließen</button></div>
+  </div>
+</div>
+<div class="modal" id="nichesModal">
+  <div class="box" style="max-width:560px">
+    <h3>Nischen verwalten</h3>
+    <p>Jede Nische hat eigene Quellen, Mentions, Opportunities und ein eigenes Founder-Profil.</p>
+    <div id="nichesBody"><p style="color:var(--muted)">lade…</p></div>
+    <div class="row" style="margin-top:14px"><button class="btn" id="nichesClose" style="flex:1">Schließen</button></div>
   </div>
 </div>
 <div class="modal" id="nicheModal">
@@ -401,6 +439,7 @@ const cfg = window.PAINFINDER_CONFIG;
 const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 const FN = cfg.SUPABASE_URL + "/functions/v1/";
 let ALL=[], parsedCsv=null;
+let NICHE=null, NICHES=[];
 const state={q:"",cat:"",sort:"score",acts:new Set()};
 const EV_FIELDS=[["spending_evidence","Zahlungs-Evidenz"],["incumbent_frustration","Anbieter-Frust"],["business_value","Geschaeftswert"]];
 const FIT_FIELDS=[["fit_knowledge","Wissensvorteil"],["fit_access","Kundenzugang"],["fit_buildability","Umsetzbarkeit"]];
@@ -416,7 +455,8 @@ function kiBadge(o){
 }
 const EV_TYPE_LABEL={spending_disclosed:"Zahlt bereits",paid_alternative_named:"Bezahltes Tool genannt",alternative_hunting:"Sucht Alternative",switching_frustration:"Wechsel-Frust",urgent_need:"Dringender Bedarf",loss_disclosed:"Verlust beziffert",hiring_for_problem:"Stellt dafuer ein"};
 async function load(){
-  const { data, error } = await sb.from("dashboard_opportunities").select("*");
+  let q=sb.from("dashboard_opportunities").select("*"); if(NICHE) q=q.eq("niche_id",NICHE);
+  const { data, error } = await q;
   if(error){ dbg("dashboard_opportunities","Lesefehler",error.message,false); document.getElementById("grid").innerHTML='<div class="empty">Fehler: '+error.message+'<br><small>config.js korrekt? Schema eingespielt?</small></div>'; return; }
   ALL=data||[]; dbg("dashboard_opportunities","OK",{opportunities:ALL.length},true); hydrate(); render();
   if(document.getElementById("dbg")&&document.getElementById("dbg").classList.contains("on")) dbgCounts();
@@ -562,6 +602,7 @@ document.getElementById("bNiche").onclick=()=>{ nicheModal.classList.add("on"); 
 document.getElementById("nClose").onclick=()=>nicheModal.classList.remove("on");
 async function niche(payload){
   const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return null;}
+  payload=Object.assign({niche_id:NICHE},payload||{});
   try{
     const res=await fetch(FN+"configure-niche",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(payload)});
     const txt=await res.text(); let j=null; try{j=JSON.parse(txt);}catch(_){}
@@ -709,6 +750,7 @@ document.getElementById("progX").onclick=()=>progEl().classList.remove("on");
 // Einheitlicher Function-Aufruf: loggt ins Debug, gibt geparste Antwort zurück.
 async function callFn(name,body){
   const secret=getSecret(); if(!secret) return {ok:false,error:"kein Secret"};
+  if(NICHE && (!body || body.niche_id==null)) body=Object.assign({niche_id:NICHE},body||{});
   try{
     const res=await fetch(FN+name,{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:body?JSON.stringify(body):undefined});
     const txt=await res.text(); let j=null; try{j=JSON.parse(txt);}catch(_){}
@@ -815,7 +857,7 @@ async function sendImport(rows,label,btn){
   const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return false;}
   const old=btn.textContent; btn.disabled=true; btn.textContent="… importiere";
   try{
-    const r1=await fetch(FN+"import-mentions",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify({rows:rows,source_label:label})});
+    const r1=await fetch(FN+"import-mentions",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify({rows:rows,source_label:label,niche_id:NICHE})});
     const t1=await r1.text(); let j1=null; try{j1=JSON.parse(t1);}catch(_){}
     dbg("import-mentions","HTTP "+r1.status, j1!==null?j1:t1, r1.ok && !(j1&&j1.error));
     if(!j1||j1.error){toast("Import-Fehler: "+((j1&&j1.error)||"unerwartete Antwort"));btn.disabled=false;btn.textContent=old;return false;}
@@ -855,6 +897,7 @@ document.getElementById("bSources").onclick=()=>{srcModal.classList.add("on");sr
 document.getElementById("srcClose").onclick=()=>srcModal.classList.remove("on");
 document.getElementById("srcPlatform").onchange=srcHint;
 async function manageSrc(payload){
+  payload=Object.assign({niche_id:NICHE},payload||{});
   const secret=getSecret(); if(!secret){toast("Abgebrochen — kein Secret.");return null;}
   try{
     const res=await fetch(FN+"manage-sources",{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(payload)});
@@ -1054,7 +1097,100 @@ document.getElementById("dbgRefresh").onclick=()=>{dbgCounts();dbgSources();};
 document.getElementById("dbgClear").onclick=()=>{DBGLOG.length=0;renderDbgLog();};
 if(location.search.indexOf("debug")>=0) openDbg();
 
-load();
+
+// ===== Nischen-Switcher + Settings + Nischen-Verwaltung =====
+async function loadNiches(){
+  try{ const {data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at"); NICHES=data||[]; }
+  catch(_){ NICHES=[]; }
+  const sel=document.getElementById("nicheSwitch");
+  if(sel) sel.innerHTML=NICHES.map(function(n){return '<option value="'+n.id+'">'+esc(n.name)+'</option>';}).join("");
+  const saved=(typeof localStorage!=="undefined")?localStorage.getItem("active_niche_id"):null;
+  NICHE=(saved&&NICHES.some(function(n){return n.id===saved;}))?saved:((NICHES[0]&&NICHES[0].id)||null);
+  if(sel&&NICHE) sel.value=NICHE;
+}
+async function initApp(){ await loadNiches(); await load(); }
+(function(){
+  var sel=document.getElementById("nicheSwitch");
+  if(sel) sel.onchange=async function(){ NICHE=sel.value; try{localStorage.setItem("active_niche_id",NICHE);}catch(_){ } await load(); };
+  var bN=document.getElementById("bNiches"); if(bN) bN.onclick=openNiches;
+  var bS=document.getElementById("bSettings"); if(bS) bS.onclick=openSettings;
+  var sc=document.getElementById("setClose"); if(sc) sc.onclick=function(){document.getElementById("settingsModal").classList.remove("on");};
+  var nc=document.getElementById("nichesClose"); if(nc) nc.onclick=function(){document.getElementById("nichesModal").classList.remove("on");};
+})();
+
+// ---- Einstellungen ----
+async function openSettings(){
+  document.getElementById("settingsModal").classList.add("on");
+  var box=document.getElementById("setBody"); box.innerHTML='<p style="color:var(--muted)">lade…</p>';
+  try{
+    var q=sb.from("app_settings").select("*").eq("is_sensitive",false);
+    q=NICHE?q.or("niche_id.is.null,niche_id.eq."+NICHE):q.is("niche_id",null);
+    var res=await q; var data=res.data||[];
+    var map={};
+    data.filter(function(s){return s.niche_id==null;}).forEach(function(s){map[s.key]=Object.assign({},s);});
+    data.filter(function(s){return s.niche_id!=null;}).forEach(function(s){map[s.key]=Object.assign({},map[s.key]||{},s);});
+    var rows=Object.keys(map).map(function(k){return map[k];});
+    var cats={}; rows.forEach(function(s){(cats[s.category]=cats[s.category]||[]).push(s);});
+    box.innerHTML=Object.keys(cats).map(function(cat){
+      return '<div class="set-cat">'+esc(cat)+'</div>'+cats[cat].map(setRow).join("");}).join("");
+    box.querySelectorAll("[data-skey]").forEach(function(el){
+      el.onchange=async function(){ var key=el.getAttribute("data-skey");
+        var val=(el.type==="checkbox")?el.checked:Number(el.value);
+        if(key==="max_claude_output_tokens"&&val>3000){val=3000;el.value=3000;}
+        var r=await callFn("manage-settings",{action:"upsert",key:key,value:val,niche_id:NICHE});
+        toast((r&&r.ok)?"Gespeichert ✓":"Fehler beim Speichern"); };
+    });
+  }catch(e){ box.innerHTML='<p style="color:var(--hot)">Fehler: '+esc(e.message||String(e))+'</p>'; }
+}
+function setRow(s){
+  var isNum=(s.value_type==="number"); var v=s.value;
+  var ctrl=isNum?('<input type="number" class="set-num" data-skey="'+s.key+'" value="'+(v==null?"":v)+'">')
+    :('<label class="switch"><input type="checkbox" data-skey="'+s.key+'" '+((v===true||v==="true")?"checked":"")+'><span class="track2"></span></label>');
+  return '<div class="set-row"><div class="set-meta"><div class="set-label">'+esc(s.label||s.key)+'</div>'+
+    (s.description?'<div class="set-desc">'+esc(s.description)+'</div>':'')+'</div>'+ctrl+'</div>';
+}
+
+// ---- Nischen verwalten ----
+async function openNiches(){
+  document.getElementById("nichesModal").classList.add("on");
+  var box=document.getElementById("nichesBody"); box.innerHTML='<p style="color:var(--muted)">lade…</p>';
+  var r=await callFn("manage-niches",{action:"list"});
+  if(!r||!r.ok){ box.innerHTML='<p style="color:var(--hot)">Fehler beim Laden</p>'; return; }
+  var list=(r.j&&r.j.niches)||[];
+  box.innerHTML=list.map(nicheCard).join("")+
+    '<div class="ncreate"><div class="block-title">Neue Nische</div>'+
+    '<input id="ncName" placeholder="Name (z.B. Escrow für digitale Assets)"><input id="ncAud" placeholder="Zielgruppe">'+
+    '<textarea id="ncKw" placeholder="Suchbegriffe (Semikolon)"></textarea>'+
+    '<textarea id="ncComp" placeholder="Anbieter/Konkurrenten (Semikolon)"></textarea>'+
+    '<button class="btn primary" id="ncCreate" style="width:100%">Nische erstellen</button></div>';
+  box.querySelectorAll("[data-na]").forEach(function(b){ b.onclick=function(){ nicheAction(b.getAttribute("data-na"),b.getAttribute("data-id")); }; });
+  var cb=document.getElementById("ncCreate");
+  if(cb) cb.onclick=async function(){
+    var name=document.getElementById("ncName").value.trim(); if(!name){toast("Name fehlt");return;}
+    cb.disabled=true; cb.textContent="… erstelle";
+    var r2=await callFn("manage-niches",{action:"create",name:name,target_audience:document.getElementById("ncAud").value,
+      keywords:document.getElementById("ncKw").value,competitors:document.getElementById("ncComp").value});
+    cb.disabled=false; cb.textContent="Nische erstellen";
+    if(r2&&r2.ok){ toast("Nische erstellt ✓"); await loadNiches(); openNiches(); } else toast("Fehler");
+  };
+}
+function nicheCard(n){
+  return '<div class="ncard"><div class="nc-main"><b>'+esc(n.name)+'</b>'+(n.is_archived?' <span class="nbadge">archiviert</span>':'')+
+    (n.description?'<div class="nc-desc">'+esc(n.description)+'</div>':'')+'</div><div class="nc-act">'+
+    '<button class="btn" data-na="rename" data-id="'+n.id+'">Umbenennen</button>'+
+    (n.is_archived?'<button class="btn" data-na="unarchive" data-id="'+n.id+'">Aktivieren</button>'
+                  :'<button class="btn" data-na="archive" data-id="'+n.id+'">Archivieren</button>')+
+    '<button class="btn" data-na="delete" data-id="'+n.id+'">Löschen</button></div></div>';
+}
+async function nicheAction(action,id){
+  var payload={action:action,id:id};
+  if(action==="rename"){ var nn=prompt("Neuer Name:"); if(!nn)return; payload.action="update"; payload.name=nn; }
+  if(action==="delete"){ if(!confirm("Diese Aktion löscht die Nische und ALLE zugehörigen Daten (Quellen, Mentions, Opportunities). Fortfahren?")) return; }
+  var r=await callFn("manage-niches",payload);
+  if(r&&r.ok){ toast("OK ✓"); await loadNiches(); openNiches(); await load(); } else toast("Fehler");
+}
+
+initApp();
 </script>
 </body>
 </html>
