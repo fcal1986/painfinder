@@ -5,8 +5,8 @@
 name: painfinder-pipeline
 
 on:
-  schedule:
-    - cron: '0 * * * *'        # stündlich (UTC)
+  #schedule:
+  #  - cron: '0 * * * *'        # stündlich (UTC)
   workflow_dispatch: {}
 
 concurrency:
