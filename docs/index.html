@@ -284,6 +284,19 @@
   .nc-act .btn{height:38px;padding:0 14px;font-size:12px;border-radius:11px}
 
   .prog-sub{font-family:"IBM Plex Mono";font-size:11px;color:var(--gold);padding:7px 14px 9px;border-bottom:1px solid var(--line);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  /* === Auto-Nische + Chips === */
+  .auto-niche{padding:2px 0 10px;border-bottom:1px solid var(--line)}
+  #nichesModal .cg{margin:12px 0}
+  #nichesModal .cg-l{font-size:12px;color:var(--muted);margin-bottom:8px}
+  #nichesModal .chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  #nichesModal .chip{min-height:42px;padding:0 15px;border-radius:21px;border:1px solid var(--line2);background:var(--panel2);color:var(--muted);font-size:13px;cursor:pointer;transition:background .15s,border-color .15s,color .15s;font-family:inherit}
+  #nichesModal .chip:active{transform:scale(.96)}
+  #nichesModal .chip.on{background:rgba(232,181,77,.16);border-color:var(--gold);color:var(--ink);font-weight:600}
+  #nichesModal .chip.on::before{content:"\2713 "}
+  #nichesModal .chip-add{min-height:42px;width:130px;padding:0 14px;border-radius:21px;border:1px dashed var(--line2);background:transparent;color:var(--ink);font-size:13px;margin-bottom:0}
+  #nichesModal .sugg{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line2)}
+  #nichesModal .rev{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px;line-height:1.65}
 </style>
 </head>
 <body>
@@ -1214,13 +1227,23 @@ async function openNiches(){
   var r=await callFn("manage-niches",{action:"list"});
   if(!r||!r.ok){ box.innerHTML='<p style="color:var(--hot)">Fehler beim Laden</p>'; return; }
   var list=(r.j&&r.j.niches)||[];
-  box.innerHTML=list.map(nicheCard).join("")+
-    '<div class="ncreate"><div class="block-title">Neue Nische</div>'+
+  box.innerHTML=
+    '<div class="auto-niche">'+
+      '<div class="block-title">\u2728 Nische automatisch erstellen</div>'+
+      '<input id="anTopic" placeholder="Thema (z. B. Pampered Chef Berater-Tools)">'+
+      '<input id="anName" placeholder="Name (optional)">'+
+      '<button class="btn primary" id="anGo" style="width:100%">\u2728 Vorschlag holen</button>'+
+      '<div id="anResult"></div>'+
+    '</div>'+
+    '<div class="block-title" style="margin-top:20px">Vorhandene Nischen</div>'+
+    list.map(nicheCard).join("")+
+    '<div class="ncreate"><div class="block-title">Neue Nische (manuell)</div>'+
     '<input id="ncName" placeholder="Name (z.B. Escrow für digitale Assets)"><input id="ncAud" placeholder="Zielgruppe">'+
     '<textarea id="ncKw" placeholder="Suchbegriffe (Semikolon)"></textarea>'+
     '<textarea id="ncComp" placeholder="Anbieter/Konkurrenten (Semikolon)"></textarea>'+
     '<button class="btn primary" id="ncCreate" style="width:100%">Nische erstellen</button></div>';
   box.querySelectorAll("[data-na]").forEach(function(b){ b.onclick=function(){ nicheAction(b.getAttribute("data-na"),b.getAttribute("data-id")); }; });
+  var ag=document.getElementById("anGo"); if(ag) ag.onclick=suggestNiche;
   var cb=document.getElementById("ncCreate");
   if(cb) cb.onclick=async function(){
     var name=document.getElementById("ncName").value.trim(); if(!name){toast("Name fehlt");return;}
@@ -1230,6 +1253,79 @@ async function openNiches(){
     cb.disabled=false; cb.textContent="Nische erstellen";
     if(r2&&r2.ok){ toast("Nische erstellt ✓"); await loadNiches(); openNiches(); } else toast("Fehler");
   };
+}
+var SUGG=null;
+async function suggestNiche(){
+  var topic=val("anTopic"); if(!topic){ toast("Bitte Thema eingeben"); return; }
+  var btn=document.getElementById("anGo"); btn.disabled=true; btn.textContent="\u2026 denke nach";
+  var r=await callFn("suggest-niche",{topic:topic,name:val("anName")});
+  btn.disabled=false; btn.textContent="\u2728 Vorschlag holen";
+  if(!r||!r.ok||!r.j||!r.j.suggestion){ toast((r&&r.j&&r.j.error)||"Kein Vorschlag erhalten"); return; }
+  var s=r.j.suggestion;
+  s._sel={ keywords:new Set(s.keywords), competitors:new Set(s.competitors),
+    terms:new Set(s.sources.terms), websites:new Set(s.sources.websites),
+    rss:new Set(s.sources.rss), hackernews:new Set(s.sources.hackernews) };
+  SUGG=s; renderSugg();
+}
+function renderSugg(){
+  var s=SUGG; var box=document.getElementById("anResult");
+  var rev=(s.review_sites||[]).map(function(x){ return '<li><b>'+esc(x.name)+'</b>'+(x.hint?' \u2014 '+esc(x.hint):'')+'</li>'; }).join("");
+  box.innerHTML='<div class="sugg">'+
+    '<label class="nlbl">Name</label><input id="anNm" value="'+esc(s.name)+'">'+
+    '<label class="nlbl">Beschreibung</label><textarea id="anDesc">'+esc(s.description)+'</textarea>'+
+    '<label class="nlbl">Zielgruppe</label><input id="anAud" value="'+esc(s.target_audience)+'">'+
+    chipGroup("Suchbegriffe","keywords",s.keywords)+
+    chipGroup("Konkurrenten","competitors",s.competitors)+
+    '<div class="block-title" style="margin-top:14px">Quellen (per Tipp an/aus)</div>'+
+    chipGroup("Suchbegriffe (Crawl)","terms",s.sources.terms)+
+    chipGroup("Webseiten / Communities","websites",s.sources.websites)+
+    chipGroup("RSS-Feeds","rss",s.sources.rss)+
+    chipGroup("Hacker-News-Queries","hackernews",s.sources.hackernews)+
+    (rev?'<div class="block-title" style="margin-top:14px">Reviews holen (manuell \u00fcber \uFF0B Bewertungen einf\u00fcgen)</div><ul class="rev">'+rev+'</ul>':'')+
+    '<button class="btn primary" id="anApply" style="width:100%;height:50px;margin-top:10px">\u2713 Nische + Quellen erstellen</button>'+
+    '</div>';
+  wireSugg();
+}
+function chipGroup(label,key,all){
+  var sel=SUGG._sel[key];
+  var chips=(all||[]).map(function(v){ return '<button class="chip'+(sel.has(v)?' on':'')+'" data-cg="'+key+'" data-cv="'+esc(v)+'">'+esc(v)+'</button>'; }).join("");
+  return '<div class="cg"><div class="cg-l">'+esc(label)+'</div><div class="chips">'+chips+
+    '<input class="chip-add" data-cgadd="'+key+'" placeholder="+ eigenes"></div></div>';
+}
+function wireSugg(){
+  var box=document.getElementById("anResult");
+  box.querySelectorAll("[data-cg]").forEach(function(b){
+    b.onclick=function(){ var k=b.getAttribute("data-cg"), v=b.getAttribute("data-cv");
+      if(SUGG._sel[k].has(v)) SUGG._sel[k].delete(v); else SUGG._sel[k].add(v);
+      b.classList.toggle("on"); };
+  });
+  box.querySelectorAll("[data-cgadd]").forEach(function(inp){
+    inp.onkeydown=function(e){ if(e.key==="Enter"){ e.preventDefault();
+      var k=inp.getAttribute("data-cgadd"), v=inp.value.trim(); if(!v)return;
+      var lst=(k==="keywords"||k==="competitors")?SUGG[k]:SUGG.sources[k];
+      if(lst.indexOf(v)<0) lst.push(v); SUGG._sel[k].add(v); inp.value=""; renderSugg(); } };
+  });
+  var ap=document.getElementById("anApply"); if(ap) ap.onclick=anApply;
+}
+async function anApply(){
+  var name=(val("anNm")||SUGG.name).trim(); if(!name){ toast("Name fehlt"); return; }
+  var ap=document.getElementById("anApply"); ap.disabled=true; ap.textContent="\u2026 erstelle";
+  var r=await callFn("manage-niches",{action:"create",name:name,description:val("anDesc"),target_audience:val("anAud"),
+    keywords:Array.from(SUGG._sel.keywords),competitors:Array.from(SUGG._sel.competitors)});
+  if(!r||!r.ok||!r.j||!r.j.id){ ap.disabled=false; ap.textContent="\u2713 Nische + Quellen erstellen"; toast("Fehler beim Anlegen"); return; }
+  var nid=r.j.id;
+  var items=[]
+    .concat(Array.from(SUGG._sel.terms).map(function(x){return {platform:"term",handle:x};}))
+    .concat(Array.from(SUGG._sel.websites).map(function(x){return {platform:"web",handle:x};}))
+    .concat(Array.from(SUGG._sel.rss).map(function(x){return {platform:"rss",handle:x};}))
+    .concat(Array.from(SUGG._sel.hackernews).map(function(x){return {platform:"hackernews",handle:x};}));
+  if(items.length) await callFn("manage-sources",{action:"addmany",items:items,niche_id:nid});
+  toast("Nische + "+items.length+" Quellen erstellt \u2713");
+  SUGG=null;
+  await loadNiches(); NICHE=nid; var sel=document.getElementById("nicheSwitch"); if(sel) sel.value=nid;
+  try{ localStorage.setItem("active_niche_id",nid); }catch(_){ }
+  document.getElementById("nichesModal").classList.remove("on");
+  await load();
 }
 function nicheCard(n){
   return '<div class="ncard"><div class="nc-main"><b>'+esc(n.name)+'</b>'+(n.is_archived?' <span class="nbadge">archiviert</span>':'')+
