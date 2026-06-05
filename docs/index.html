@@ -297,6 +297,10 @@
   #nichesModal .chip-add{min-height:42px;width:130px;padding:0 14px;border-radius:21px;border:1px dashed var(--line2);background:transparent;color:var(--ink);font-size:13px;margin-bottom:0}
   #nichesModal .sugg{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line2)}
   #nichesModal .rev{margin:6px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px;line-height:1.65}
+
+  #nichesModal .chip.ed{background:rgba(232,181,77,.16);border-color:var(--gold);color:var(--ink);font-weight:600}
+  #nichesModal .chip.ed::after{content:" \2715";opacity:.5;font-weight:400;margin-left:2px}
+  #nichesModal .chip.ed:active{transform:scale(.96)}
 </style>
 </head>
 <body>
@@ -1239,17 +1243,18 @@ async function openNiches(){
     list.map(nicheCard).join("")+
     '<div class="ncreate"><div class="block-title">Neue Nische (manuell)</div>'+
     '<input id="ncName" placeholder="Name (z.B. Escrow für digitale Assets)"><input id="ncAud" placeholder="Zielgruppe">'+
-    '<textarea id="ncKw" placeholder="Suchbegriffe (Semikolon)"></textarea>'+
-    '<textarea id="ncComp" placeholder="Anbieter/Konkurrenten (Semikolon)"></textarea>'+
+    chipEditor("ncKw","Suchbegriffe",[])+
+    chipEditor("ncComp","Anbieter/Konkurrenten",[])+
     '<button class="btn primary" id="ncCreate" style="width:100%">Nische erstellen</button></div>';
   box.querySelectorAll("[data-na]").forEach(function(b){ b.onclick=function(){ nicheAction(b.getAttribute("data-na"),b.getAttribute("data-id")); }; });
   var ag=document.getElementById("anGo"); if(ag) ag.onclick=suggestNiche;
+  renderAllChips();
   var cb=document.getElementById("ncCreate");
   if(cb) cb.onclick=async function(){
     var name=document.getElementById("ncName").value.trim(); if(!name){toast("Name fehlt");return;}
     cb.disabled=true; cb.textContent="… erstelle";
     var r2=await callFn("manage-niches",{action:"create",name:name,target_audience:document.getElementById("ncAud").value,
-      keywords:document.getElementById("ncKw").value,competitors:document.getElementById("ncComp").value});
+      keywords:chipsVal("ncKw"),competitors:chipsVal("ncComp")});
     cb.disabled=false; cb.textContent="Nische erstellen";
     if(r2&&r2.ok){ toast("Nische erstellt ✓"); await loadNiches(); openNiches(); } else toast("Fehler");
   };
@@ -1344,16 +1349,38 @@ async function nicheAction(action,id){
   if(r&&r.ok){ toast(action==="duplicate"?"Kopiert ✓":"OK ✓"); await loadNiches(); openNiches(); await load(); } else toast("Fehler");
 }
 function val(id){ var e=document.getElementById(id); return e?e.value:""; }
+var CHIPS={};
+function chipEditor(fid,label,values,conf){
+  CHIPS[fid]={label:label,conf:conf||"",values:(values||[]).slice()};
+  return '<div class="cg" id="ce_'+fid+'"></div>';
+}
+function renderChipGroup(fid){
+  var g=CHIPS[fid]; var el=document.getElementById("ce_"+fid); if(!g||!el) return;
+  var chips=g.values.map(function(v,i){ return '<button class="chip ed" data-cerm="'+fid+'" data-cei="'+i+'">'+esc(v)+'</button>'; }).join("");
+  el.innerHTML='<div class="cg-l">'+esc(g.label)+(g.conf?' <span class="conf">'+esc(g.conf)+'</span>':'')+'</div>'+
+    '<div class="chips">'+chips+'<input class="chip-add" data-ceadd="'+fid+'" placeholder="+ hinzuf\u00fcgen"></div>';
+  el.querySelectorAll("[data-cerm]").forEach(function(b){ b.onclick=function(){
+    var f=b.getAttribute("data-cerm"), i=parseInt(b.getAttribute("data-cei"),10);
+    CHIPS[f].values.splice(i,1); renderChipGroup(f); }; });
+  var inp=el.querySelector("[data-ceadd]");
+  if(inp) inp.onkeydown=function(e){ if(e.key==="Enter"){ e.preventDefault();
+    var v=inp.value.trim(); if(!v) return;
+    if(CHIPS[fid].values.indexOf(v)<0) CHIPS[fid].values.push(v);
+    inp.value=""; renderChipGroup(fid);
+    setTimeout(function(){ var ni=document.querySelector("#ce_"+fid+" [data-ceadd]"); if(ni) ni.focus(); },0); } };
+}
+function renderAllChips(){ Object.keys(CHIPS).forEach(renderChipGroup); }
+function chipsVal(fid){ return (CHIPS[fid]&&CHIPS[fid].values)||[]; }
 function editForm(n,p){
   n=n||{}; p=p||{};
   return '<div class="block-title">Nische bearbeiten</div>'+
    '<label class="nlbl">Name</label><input id="enName" value="'+esc(n.name||"")+'">'+
    '<label class="nlbl">Beschreibung</label><input id="enDesc" value="'+esc(n.description||"")+'">'+
    '<label class="nlbl">Zielgruppe</label><input id="enAud" value="'+esc(n.target_audience||"")+'">'+
-   '<label class="nlbl">Suchbegriffe <span class="conf">mit Semikolon</span></label><textarea id="enKw">'+esc((n.keywords||[]).join("; "))+'</textarea>'+
-   '<label class="nlbl">Anbieter/Konkurrenten <span class="conf">mit Semikolon</span></label><textarea id="enComp">'+esc((n.competitors||[]).join("; "))+'</textarea>'+
+   chipEditor("enKw","Suchbegriffe",n.keywords,"tippen entfernt \u00b7 Enter f\u00fcgt hinzu")+
+   chipEditor("enComp","Anbieter/Konkurrenten",n.competitors)+
    '<div class="block-title" style="margin-top:16px">Founder-Profil dieser Nische</div>'+
-   '<label class="nlbl">Womit kennst du dich aus? <span class="conf">mit Semikolon</span></label><textarea id="enKnow">'+esc((p.knowledge||[]).join("; "))+'</textarea>'+
+   chipEditor("enKnow","Womit kennst du dich aus?",p.knowledge)+
    '<label class="nlbl">Wen erreichst du in 30 Tagen?</label><input id="enReach" value="'+esc(p.reachable||"")+'">'+
    '<label class="nlbl">Was kannst du als MVP bauen?</label><input id="enBuild" value="'+esc(p.can_build||"")+'">'+
    '<div class="row" style="margin-top:16px"><button class="btn" id="enBack" style="flex:1">Zurück</button><button class="btn primary" id="enSave" style="flex:1">Speichern</button></div>';
@@ -1364,14 +1391,14 @@ async function editNiche(id){
   var box=document.getElementById("nichesBody"); box.innerHTML='<p style="color:var(--muted)">lade…</p>';
   var r=await callFn("manage-niches",{action:"get",id:id});
   if(!r||!r.ok){ box.innerHTML='<p style="color:var(--hot)">Fehler beim Laden</p>'; return; }
-  box.innerHTML=editForm(r.j&&r.j.niche, r.j&&r.j.profile);
+  box.innerHTML=editForm(r.j&&r.j.niche, r.j&&r.j.profile); renderAllChips();
   document.getElementById("enBack").onclick=openNiches;
   document.getElementById("enSave").onclick=async function(){
     var btn=this; btn.disabled=true; btn.textContent="… speichere";
     var r2=await callFn("manage-niches",{action:"save",id:id,
       name:val("enName"),description:val("enDesc"),target_audience:val("enAud"),
-      keywords:val("enKw"),competitors:val("enComp"),
-      knowledge:val("enKnow"),reachable:val("enReach"),can_build:val("enBuild")});
+      keywords:chipsVal("enKw"),competitors:chipsVal("enComp"),
+      knowledge:chipsVal("enKnow"),reachable:val("enReach"),can_build:val("enBuild")});
     btn.disabled=false; btn.textContent="Speichern";
     if(r2&&r2.ok){ toast("Gespeichert ✓"); await loadNiches(); openNiches(); } else toast("Fehler beim Speichern");
   };
