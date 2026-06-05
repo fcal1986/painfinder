@@ -312,6 +312,26 @@
   #menuSheet.on{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:var(--panel2);border:1px solid var(--line2);border-radius:16px;animation:rise .18s both}
   #menuSheet .btn{height:52px;font-size:14px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:6px;padding:0 10px}
   #menuSheet #bTheme,#menuSheet #bDebug{font-size:18px}
+
+  /* === Mobile-Fixes: Header-Überlauf & Detail-Drawer === */
+  html,body{overflow-x:hidden}
+  .bar{width:100%}
+  .actions{max-width:100%}
+  .topbar{min-width:0;max-width:100%}
+  /* Select nimmt nur den freien Platz (kein Überlauf bei langen Namen) -> Burger bleibt sichtbar */
+  #nicheSwitch{flex:1 1 0;width:0;min-width:0;max-width:none}
+  #bMenu{flex:0 0 56px}
+  .drawer{overflow-wrap:break-word}
+  @media (max-width:600px){
+    .bar{padding:14px 16px;gap:12px}
+    main{padding:18px 16px 100px}
+    #nicheSwitch{height:50px;font-size:15px;padding:0 36px 0 14px}
+    #bMenu{flex:0 0 52px;width:52px;min-width:52px;height:50px;font-size:21px}
+    #bSearch{height:54px;font-size:17px}
+    .drawer{width:100%;border-left:none;padding:22px 16px 92px}
+    .drawer h2{font-size:21px;margin:2px 42px 4px 0}
+    .drawer .x{top:12px;right:12px;font-size:28px;width:42px;height:42px;display:flex;align-items:center;justify-content:center}
+  }
 </style>
 </head>
 <body>
