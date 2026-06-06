@@ -641,7 +641,7 @@ async function openDrawer(id){
   const [{data:ev},{data:jtbd},{data:links}] = await Promise.all([
     sb.from("validation_evidence").select("*").eq("opportunity_id",id),
     sb.from("jobs_to_be_done").select("*").eq("opportunity_id",id).limit(1),
-    sb.from("opportunity_mentions").select("raw_mentions(platform,url,title)").eq("opportunity_id",id),
+    sb.from("opportunity_mentions").select("raw_mentions(platform,url,title,source_label)").eq("opportunity_id",id),
   ]);
   const job=jtbd&&jtbd[0];
   const evBars=EV_FIELDS.map(f=>bar(f[0],f[1],o[f[0]],"ev")).join("");
@@ -650,9 +650,14 @@ async function openDrawer(id){
       '<div class="q">&bdquo;'+esc(e.quote)+'"</div>'+
       (e.amount_value?'<div class="amt">'+e.amount_value+' '+esc(e.amount_currency||"")+' / '+esc(e.amount_period||"")+'</div>':"")+'</div>').join("")
       || '<p style="color:var(--muted);font-size:13px">Keine Zahlungs-Belege - bleibt unter Stufe 3 (Score gedeckelt).</p>';
-  const srcHtml=(links||[]).map(l=>{const m=l.raw_mentions;return m&&m.url?
-      '<a href="'+m.url+'" target="_blank" rel="noopener">'+esc(m.platform)+': '+esc((m.title||m.url).slice(0,70))+'</a>':
-      '<span style="color:var(--muted);font-size:12px">'+esc((m&&m.platform)||"")+'</span>';}).join("");
+  const PLAT_LABEL={appstore:"App Store",googleplay:"Google Play",hackernews:"Hacker News",web:"Web",rss:"RSS",reddit:"Reddit",term:"Suchbegriff"};
+  const srcHtml=(links||[]).map(l=>{const m=l.raw_mentions; if(!m) return "";
+      const plat=PLAT_LABEL[m.platform]||m.platform||"";
+      const name=m.source_label||m.title||"";
+      const lbl=esc(plat)+(name?' &middot; <b>'+esc(String(name).slice(0,70))+'</b>':"");
+      return m.url?
+        '<a href="'+m.url+'" target="_blank" rel="noopener">'+lbl+'</a>':
+        '<span style="color:var(--muted);font-size:12px">'+lbl+'</span>';}).join("");
   const prios=Object.keys(ACT_LABEL).map(k=>'<button class="pbtn '+(o.recommended_action===k?'on':'')+'" data-p="'+k+'">'+ACT_LABEL[k]+'</button>').join("");
   document.getElementById("dynbody").innerHTML=
     '<div class="sec"><div class="h">Empfohlener naechster Schritt</div><p>'+esc(o.next_step||"-")+'</p></div>'+
