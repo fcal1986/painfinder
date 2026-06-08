@@ -294,7 +294,7 @@ function topQuote(o){return o._q||o.monetization_idea||"";}
 function catIcon(o){const c=(o.category||"").toLowerCase();if(c.includes("saas"))return"💻";if(c.includes("market"))return"🛒";if(c.includes("finanz"))return"💶";return"💡";}
 /* saved (bookmark) */
 function savedGet(){try{return JSON.parse(localStorage.getItem("cf_saved")||"[]");}catch(_){return[];}}
-function toggleSave(id,el){let a=savedGet();if(a.includes(id)){a=a.filter(x=>x!==id);}else a.push(id);localStorage.setItem("cf_saved",JSON.stringify(a));if(el){el.classList.toggle("on");el.textContent=a.includes(id)?"🔖":"🔖";}event&&event.stopPropagation();}
+function toggleSave(id,el){let a=savedGet();if(a.includes(id)){a=a.filter(x=>x!==id);}else a.push(id);localStorage.setItem("cf_saved",JSON.stringify(a));if(event)event.stopPropagation();if(TAB==="chances"){renderChances();}else if(el){el.classList.toggle("on");}}
 /* data */
 let LOADED=false,NICHES_ERR=false;
 function setNicheSel(){const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id===NICHE?" selected":"")+'>'+esc(n.name)+'</option>').join("");const sm=$("fieldSelM");if(sm){sm.innerHTML=opt;sm.onchange=()=>switchField(sm.value);}}
@@ -375,22 +375,24 @@ function heroCard(o){const p=potential(o);
     '<button class="ansehen" onclick="event.stopPropagation();openChance(\''+o.id+'\')">Ansehen →</button></div>';
 }
 /* CHANCES */
-let FILTER=new Set();
+let FILTER=new Set(),SHOW_SAVED=false;
 function renderChances(){
   let h='<div class="hi" style="font-size:24px">Deine Chancen</div>';
   h+='<div class="filters">'+
-    '<button class="chip'+(!FILTER.size?" on":"")+'" onclick="FILTER.clear();renderChances()">Alle</button>'+
+    '<button class="chip'+(!FILTER.size&&!SHOW_SAVED?" on":"")+'" onclick="SHOW_SAVED=false;FILTER.clear();renderChances()">Alle</button>'+
     [["money","💰 Geld"],["pain","😣 Frust"],["solution","🔍 Alternative"],["advice","❓ Frage"]].map(([k,l])=>'<button class="chip'+(FILTER.has(k)?" on":"")+'" onclick="toggleFilter(\''+k+'\')">'+l+'</button>').join("")+
-    '<button class="chip right">⚙ Filter</button></div>';
-  const list=CHANCES.filter(o=>!FILTER.size||[...FILTER].some(k=>o["sig_"+k]));
+    '<button class="chip right'+(SHOW_SAVED?" on":"")+'" onclick="toggleSaved()">🔖 Gemerkt'+(savedGet().length?" ("+savedGet().length+")":"")+'</button></div>';
+  const list=SHOW_SAVED?CHANCES.filter(o=>savedGet().includes(o.id)):CHANCES.filter(o=>!FILTER.size||[...FILTER].some(k=>o["sig_"+k]));
   let emptyHtml;
-  if(!CHANCES.length){emptyHtml='<div class="empty"><div class="big">🌱</div><p>Noch keine Chancen in diesem Suchfeld.<br>Die Quellen liefern evtl. wenig — füge mehr Orte hinzu oder suche erneut.</p>'+
+  if(SHOW_SAVED){emptyHtml='<div class="empty"><div class="big">🔖</div><p>Noch nichts gemerkt.<br>Tippe das Lesezeichen auf einer Chance, um sie hier zu sammeln.</p></div>';}
+  else if(!CHANCES.length){emptyHtml='<div class="empty"><div class="big">🌱</div><p>Noch keine Chancen in diesem Suchfeld.<br>Die Quellen liefern evtl. wenig — füge mehr Orte hinzu oder suche erneut.</p>'+
     '<div style="display:flex;gap:10px;max-width:380px;margin:16px auto"><button class="btn" onclick="go(\'profile\')">Mehr Orte</button><button class="btn primary" onclick="reprocess()">Erneut suchen</button></div></div>';}
   else emptyHtml='<div class="empty"><div class="big">🔍</div><p>Keine Chancen für diesen Filter.</p></div>';
   h+='<div class="grid">'+(list.length?list.map(chanceCard).join(""):emptyHtml)+'</div>';
   $("view").innerHTML=h;
 }
-function toggleFilter(k){FILTER.has(k)?FILTER.delete(k):FILTER.add(k);renderChances();}
+function toggleFilter(k){SHOW_SAVED=false;FILTER.has(k)?FILTER.delete(k):FILTER.add(k);renderChances();}
+function toggleSaved(){SHOW_SAVED=!SHOW_SAVED;FILTER.clear();renderChances();}
 function chanceCard(o){const p=potential(o),ns=nextStep(o),sv=savedGet().includes(o.id);
   return '<div class="cc" onclick="openChance(\''+o.id+'\')">'+
     '<button class="bm'+(sv?" on":"")+'" onclick="toggleSave(\''+o.id+'\',this)">🔖</button>'+
