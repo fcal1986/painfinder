@@ -297,7 +297,9 @@ function savedGet(){try{return JSON.parse(localStorage.getItem("cf_saved")||"[]"
 function toggleSave(id,el){let a=savedGet();if(a.includes(id)){a=a.filter(x=>x!==id);}else a.push(id);localStorage.setItem("cf_saved",JSON.stringify(a));if(el){el.classList.toggle("on");el.textContent=a.includes(id)?"🔖":"🔖";}event&&event.stopPropagation();}
 /* data */
 async function loadNiches(){
-  try{const{data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");NICHES=data||[];}catch(_){NICHES=[];}
+  let err=false;
+  try{const{data,error}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");if(error)err=true;NICHES=data||[];}catch(_){err=true;NICHES=[];}
+  if(err){$("view").innerHTML='<div class="empty"><div class="big">⚠️</div><p>Konnte gerade nicht laden.</p><button class="btn primary" style="max-width:240px;margin:14px auto" onclick="loadNiches()">Erneut versuchen</button></div>';return;}
   if(!NICHES.length){$("bnav").style.display="none";return startOnboarding();}
   if(!NICHE){const saved=localStorage.getItem("cf_niche");NICHE=(saved&&NICHES.some(n=>n.id===saved))?saved:NICHES[0].id;}
   $("bnav").style.display="flex";$("fpMobile").style.display="";
@@ -306,6 +308,15 @@ async function loadNiches(){
   const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id===NICHE?" selected":"")+'>'+esc(n.name)+'</option>').join("");
   const sm=$("fieldSelM");if(sm){sm.innerHTML=opt;sm.onchange=()=>switchField(sm.value);}
   await loadChances();wireNav();go("home");
+}
+function setNicheSel(){const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id===NICHE?" selected":"")+'>'+esc(n.name)+'</option>').join("");const sm=$("fieldSelM");if(sm){sm.innerHTML=opt;sm.onchange=()=>switchField(sm.value);}}
+async function enterDashboard(nid,name){
+  NICHE=nid;localStorage.setItem("cf_niche",nid);
+  try{const{data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");NICHES=data||[];}catch(_){}
+  if(!NICHES.some(n=>n.id===nid))NICHES.unshift({id:nid,name:name||"Neues Suchfeld"});
+  await Promise.all(NICHES.map(async n=>{try{const{count}=await sb.from("dashboard_opportunities").select("*",{count:"exact",head:true}).eq("niche_id",n.id);n._count=count||0;}catch(_){n._count=0;}}));
+  $("bnav").style.display="flex";$("fpMobile").style.display="";setNicheSel();
+  await loadChances();wireNav();go(CHANCES.length?"chances":"home");
 }
 async function loadChances(){
   try{let q=sb.from("dashboard_opportunities").select("*");if(NICHE)q=q.eq("niche_id",NICHE);
@@ -360,7 +371,11 @@ function renderChances(){
     [["money","💰 Geld"],["pain","😣 Frust"],["solution","🔍 Alternative"],["advice","❓ Frage"]].map(([k,l])=>'<button class="chip'+(FILTER.has(k)?" on":"")+'" onclick="toggleFilter(\''+k+'\')">'+l+'</button>').join("")+
     '<button class="chip right">⚙ Filter</button></div>';
   const list=CHANCES.filter(o=>!FILTER.size||[...FILTER].some(k=>o["sig_"+k]));
-  h+='<div class="grid">'+(list.length?list.map(chanceCard).join(""):'<div class="empty"><div class="big">🔍</div><p>Keine Chancen für diesen Filter.</p></div>')+'</div>';
+  let emptyHtml;
+  if(!CHANCES.length){emptyHtml='<div class="empty"><div class="big">🌱</div><p>Noch keine Chancen in diesem Suchfeld.<br>Die Quellen liefern evtl. wenig — füge mehr Orte hinzu oder suche erneut.</p>'+
+    '<div style="display:flex;gap:10px;max-width:380px;margin:16px auto"><button class="btn" onclick="go(\'profile\')">Mehr Orte</button><button class="btn primary" onclick="reprocess()">Erneut suchen</button></div></div>';}
+  else emptyHtml='<div class="empty"><div class="big">🔍</div><p>Keine Chancen für diesen Filter.</p></div>';
+  h+='<div class="grid">'+(list.length?list.map(chanceCard).join(""):emptyHtml)+'</div>';
   $("view").innerHTML=h;
 }
 function toggleFilter(k){FILTER.has(k)?FILTER.delete(k):FILTER.add(k);renderChances();}
@@ -495,13 +510,13 @@ function foot(enabled,label,color,last){return '<div class="obfoot"><button clas
 function obTopic(t){OB.topic=t;OB.topicFree="";renderOB();}
 function obPlace(k){OB.places.has(k)?OB.places.delete(k):OB.places.add(k);renderOB();}
 function obNext(){OB.step++;renderOB();}
-let OBLOG=[],OBDONE=false;
+let OBLOG=[],OBDONE=false,OBRESULT={nid:null,name:"",chances:0};
 function feedRow(s){const ic=s.status==='run'?'<span class="fspin"></span>':s.status==='done'?'<span class="fok">✓</span>':'<span class="fdot"></span>';
   return '<div class="frow '+s.status+'">'+ic+'<div class="ftext"><div class="fl">'+esc(s.label)+'</div>'+(s.detail?'<div class="fd">'+esc(s.detail)+'</div>':'')+'</div></div>';}
 function obFeed(){$("view").innerHTML='<div class="ob"><div class="obh">'+(OBDONE?'Fertig! 🎉':'Wir richten alles für dich ein…')+'</div>'+
-  '<div class="obs">'+(OBDONE?'Deine ersten Chancen sind da.':'Du kannst live mitlesen, was gerade passiert.')+'</div>'+
+  '<div class="obs">'+(OBDONE?(OBRESULT.chances+' Chancen gefunden.'):'Du kannst live mitlesen, was gerade passiert.')+'</div>'+
   '<div class="feed">'+OBLOG.map(feedRow).join("")+'</div>'+
-  (OBDONE?'<div class="obfoot"><button class="obbtn" onclick="loadNiches()">Chancen ansehen →</button></div>':'')+'</div>';
+  (OBDONE?'<div class="obfoot"><button class="obbtn" onclick="enterDashboard(OBRESULT.nid,OBRESULT.name)">'+(OBRESULT.chances?'Chancen ansehen →':'Weiter zum Dashboard →')+'</button></div>':'')+'</div>';
   const f=document.querySelector('.feed');if(f)f.scrollTop=f.scrollHeight;}
 function obAdd(l){OBLOG.push({label:l,status:'run',detail:''});obFeed();return OBLOG.length-1;}
 function obDone(i,d){if(OBLOG[i]){OBLOG[i].status='done';if(d)OBLOG[i].detail=d;}obFeed();}
@@ -542,8 +557,15 @@ async function obFinish(){const topic=OB.topic||OB.topicFree;if(!topic)return;
     const processed=(pr&&pr.j&&pr.j.processed)||0;chances=await cnt("dashboard_opportunities",nid);
     obSet(proc,chances+" Chancen entdeckt"+(processed?" · noch am Lesen…":""));if(!processed)break;}
   obDone(proc,chances+" Chancen entdeckt");
+  OBRESULT={nid:nid,name:(s.name||topic),chances:chances};
   OBDONE=true;obFeed();
+  setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,(s.name||topic));},1600);
 }
+async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
+  const scr=["scrape-appstore","scrape-web","scrape-hn","scrape-rss"];
+  for(const fn of scr){try{await callFn(fn,{niche_id:NICHE});}catch(_){}}
+  for(let i=0;i<6;i++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:NICHE});}catch(_){}if(!(pr&&pr.j&&pr.j.processed))break;}
+  await loadChances();renderChances();toast("Fertig");}
 /* start */
 if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';}else loadNiches();
 </script>
