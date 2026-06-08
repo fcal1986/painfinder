@@ -359,6 +359,15 @@
     #nichesModal .chip,#nichesModal .chip-add{min-height:44px;font-size:14px}
     #nichesModal .nlbl{font-size:14px}
   }
+
+  /* === Signal-Kategorien (GummySearch) === */
+  .sig{display:inline-block;font-size:10px;font-weight:600;padding:3px 8px;border-radius:8px;margin-right:5px;letter-spacing:.2px;border:1px solid var(--line2)}
+  .sig-money{color:var(--green);border-color:rgba(92,224,143,.4);background:rgba(92,224,143,.10)}
+  .sig-pain{color:var(--hot);border-color:rgba(255,107,93,.4);background:rgba(255,107,93,.10)}
+  .sig-sol{color:var(--blue);border-color:rgba(103,197,255,.4);background:rgba(103,197,255,.10)}
+  .sig-adv{color:var(--amber);border-color:rgba(255,179,71,.4);background:rgba(255,179,71,.10)}
+  .tag.fresh{color:var(--gold);border-color:rgba(232,181,77,.45);background:rgba(232,181,77,.10)}
+  .sigseg span[data-s].on{background:rgba(232,181,77,.18);border-color:var(--gold);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -407,6 +416,12 @@
       <span data-a="research">Recherchieren</span>
       <span data-a="observe">Beobachten</span>
       <span data-a="ignore">Ignorieren</span>
+    </div>
+    <div class="seg sigseg" id="sigSeg">
+      <span data-s="money">💸 Geld</span>
+      <span data-s="pain">😣 Frust</span>
+      <span data-s="solution">🔍 Alternative</span>
+      <span data-s="advice">❓ Frühe Frage</span>
     </div>
   </div>
   <div class="grid" id="grid"><div class="empty">lade…</div></div>
@@ -564,7 +579,7 @@ const sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 const FN = cfg.SUPABASE_URL + "/functions/v1/";
 let ALL=[], parsedCsv=null;
 let NICHE=null, NICHES=[];
-const state={q:"",cat:"",sort:"score",acts:new Set()};
+const state={q:"",cat:"",sort:"score",acts:new Set(),signals:new Set()};
 const EV_FIELDS=[["spending_evidence","Zahlungs-Evidenz"],["incumbent_frustration","Anbieter-Frust"],["business_value","Geschaeftswert"]];
 const FIT_FIELDS=[["fit_knowledge","Wissensvorteil"],["fit_access","Kundenzugang"],["fit_buildability","Umsetzbarkeit"]];
 const ACT_LABEL={test_now:"Sofort testen",validate:"Validieren",research:"Recherchieren",observe:"Beobachten",ignore:"Ignorieren"};
@@ -597,6 +612,7 @@ function filtered(){
     if(state.cat && o.category!==state.cat) return false;
     if(state.acts.size){ if(!state.acts.has(o.recommended_action)) return false; }
     else if(o.recommended_action==="ignore") return false;   // default: Ignorierte ausblenden
+    if(state.signals.size && ![...state.signals].some(k=>o["sig_"+k])) return false;
     if(state.q){const b=[o.title,o.audience,o.category,o.monetization_idea].join(" ").toLowerCase();if(!b.includes(state.q.toLowerCase()))return false;}
     return true;
   });
@@ -609,6 +625,22 @@ function filtered(){
     if(s==="new")return new Date(b.created_at)-new Date(a.created_at);
   });
   return r;
+}
+function signalBadges(o){
+  var out="";
+  if(o.sig_money)    out+='<span class="sig sig-money">💸 Geld</span>';
+  if(o.sig_pain)     out+='<span class="sig sig-pain">😣 Frust</span>';
+  if(o.sig_solution) out+='<span class="sig sig-sol">🔍 Alternative</span>';
+  if(o.sig_advice)   out+='<span class="sig sig-adv">❓ Frage</span>';
+  return out;
+}
+function freshBadge(o){
+  if(!o.last_mention_at) return "";
+  var d=Math.floor((Date.now()-new Date(o.last_mention_at).getTime())/86400000);
+  if(isNaN(d)||d<0) return "";
+  if(d<=14) return '<span class="tag fresh">🔥 frisch</span>';
+  if(d<=60) return '<span class="tag">vor '+Math.max(1,Math.round(d/7))+' Wo</span>';
+  return "";
 }
 function render(){
   const r=filtered(), g=document.getElementById("grid");
@@ -623,7 +655,7 @@ function render(){
       '<div class="stagelabel">Stufe '+o.stage+'/4 &middot; '+stageName(o.stage)+'</div>'+
       '<div class="meta"><span class="tag ev">&#9921; '+o.evidence_count+' Evidenz</span>'+
       '<span class="tag">&#8862; '+o.source_count+' Quellen &middot; '+o.mention_count+'&times;</span>'+
-      '<span class="tag fit">&#9672; Fit '+o.founder_fit+'/10</span>'+
+      '<span class="tag fit">&#9672; Fit '+o.founder_fit+'/10</span>'+signalBadges(o)+freshBadge(o)+
       '<span class="act '+o.recommended_action+'">'+ACT_LABEL[o.recommended_action]+'</span></div></div>';
   }).join("");
   const hiddenIgnored = (!state.acts.size) ? ALL.filter(o=>o.recommended_action==="ignore").length : 0;
@@ -1172,6 +1204,7 @@ document.getElementById("q").oninput=e=>{state.q=e.target.value;render();};
 document.getElementById("fCat").onchange=e=>{state.cat=e.target.value;render();};
 document.getElementById("fSort").onchange=e=>{state.sort=e.target.value;render();};
 document.querySelectorAll("#actSeg span").forEach(s=>s.onclick=()=>{s.classList.toggle("on");const a=s.dataset.a;state.acts.has(a)?state.acts.delete(a):state.acts.add(a);render();});
+document.querySelectorAll("#sigSeg span").forEach(s=>s.onclick=()=>{s.classList.toggle("on");const k=s.dataset.s;state.signals.has(k)?state.signals.delete(k):state.signals.add(k);render();});
 document.getElementById("scrim").onclick=closeDrawer;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeDrawer();modal.classList.remove("on");srcModal.classList.remove("on");mentModal.classList.remove("on");nicheModal.classList.remove("on");}});
 let toastT;function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),4200);}
@@ -1567,12 +1600,35 @@ async function editAppSearch(id){
     if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); }
     else { btn.disabled=false; btn.textContent="+ Quelle"; } }; });
 }
+async function suggestCompApps(id){
+  var comps=chipsVal("enComp").slice(0,5);
+  if(!comps.length){ toast("Keine Konkurrenten hinterlegt"); return; }
+  var box=document.getElementById("enAppRes"); box.innerHTML='<p style="color:var(--muted);font-size:12px">suche Konkurrenz-Apps\u2026</p>';
+  var seen={}, apps=[];
+  for(var i=0;i<comps.length;i++){
+    var r=await callFn("search-apps",{q:comps[i]});
+    if(r&&r.ok&&r.j&&r.j.apps){ r.j.apps.slice(0,2).forEach(function(a){ if(!seen[a.id]){ seen[a.id]=1; apps.push(a); } }); }
+  }
+  if(!apps.length){ box.innerHTML='<p style="color:var(--muted);font-size:12px">nichts gefunden</p>'; return; }
+  box.innerHTML=apps.map(function(a){
+    return '<div class="appcard" data-id="'+esc(a.id)+'" data-name="'+esc(a.name)+'">'+
+      (a.icon?'<img src="'+esc(a.icon)+'" alt="">':'<div class="appic"></div>')+
+      '<div class="appmeta"><div class="appn">'+esc(a.name)+'</div><div class="appd">'+esc(a.dev||"")+(a.rating?' \u00b7 \u2605'+(Math.round(a.rating*10)/10):'')+'</div></div>'+
+      '<button class="btn appadd">+ Quelle</button></div>';
+  }).join("");
+  box.querySelectorAll(".appcard").forEach(function(c){ var btn=c.querySelector(".appadd"); btn.onclick=async function(){
+    btn.disabled=true; btn.textContent="\u2026";
+    var src=await manageSrc({action:"add",platform:"appstore",handle:c.getAttribute("data-id")+"|"+c.getAttribute("data-name"),niche_id:id});
+    if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); }
+    else { btn.disabled=false; btn.textContent="+ Quelle"; } }; });
+}
 function wireEdit(id){
   var box=document.getElementById("nichesBody");
   box.querySelectorAll("[data-estar]").forEach(function(b){ b.onclick=function(){
     var key=b.getAttribute("data-estar"); EDIT_STARS[key]=parseInt(b.getAttribute("data-v"),10);
     var row=b.parentNode; row.querySelectorAll(".star").forEach(function(s){ s.classList.toggle("on",(parseInt(s.getAttribute("data-v"),10))<=EDIT_STARS[key]); }); }; });
   var sb=document.getElementById("enAppBtn"); if(sb) sb.onclick=function(){ editAppSearch(id); };
+  var sc=document.getElementById("enAppComp"); if(sc) sc.onclick=function(){ suggestCompApps(id); };
   var sq=document.getElementById("enAppQ"); if(sq) sq.onkeydown=function(e){ if(e.key==="Enter"){ e.preventDefault(); editAppSearch(id); } };
 }
 function editForm(n,p){
@@ -1587,7 +1643,7 @@ function editForm(n,p){
    chipEditor("enKw","Suchbegriffe",n.keywords,"tippen entfernt \u00b7 Enter f\u00fcgt hinzu")+
    chipEditor("enComp","Anbieter/Konkurrenten",n.competitors)+
    '<div class="block-title" style="margin-top:16px">\uD83D\uDCF1 App-Reviews als Quelle hinzuf\u00fcgen</div>'+
-   '<div class="row" style="gap:6px"><input id="enAppQ" style="flex:1" placeholder="App suchen\u2026"><button class="btn" id="enAppBtn">Suchen</button></div><div id="enAppRes"></div>'+
+   '<div class="row" style="gap:6px"><input id="enAppQ" style="flex:1" placeholder="App suchen\u2026"><button class="btn" id="enAppBtn">Suchen</button><button class="btn" id="enAppComp">Konkurrenz</button></div><div id="enAppRes"></div>'+
    '<div class="block-title" style="margin-top:16px">Founder-Profil dieser Nische</div>'+
    chipEditor("enKnow","Womit kennst du dich aus?",p.knowledge)+
    chipEditor("enReach","Wen erreichst du in 30 Tagen?",reachArr)+
