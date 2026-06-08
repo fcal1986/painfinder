@@ -481,7 +481,7 @@ const TOPICS=[["Autohaus","🚗"],["Handwerk","🔧"],["Gastronomie","🍽"],["I
 const AUDS=[["Kunden","👥"],["Mitarbeiter","🧑‍💼"],["Eltern","👨‍👩‍👧"],["Unternehmer","💼"],["Jugendliche","🧑"],["Vereine","⚽"],["Händler","🏪"]];
 const PLACES=[["apps","App-Bewertungen"],["web","Webseiten & Blogs"],["communities","Communities"],["foren","Foren"],["reddit","Reddit"],["own","Eigene Texte"]];
 let OB={step:1,topic:"",topicFree:"",aud:"",places:new Set(["apps","web","communities"]),stars:{knowledge:0,access:0,build:0}};
-function startOnboarding(){OB={step:1,topic:"",topicFree:"",aud:"",places:new Set(["apps","web","communities"]),stars:{knowledge:0,access:0,build:0}};$("bnav").style.display=NICHES.length?"flex":"none";renderOB();}
+function startOnboarding(){OB={step:1,topic:"",topicFree:"",aud:"",places:new Set(["apps","web","communities"]),stars:{knowledge:0,access:0,build:0}};$("bnav").style.display=NICHES.length?"flex":"none";wireNav();renderOB();}
 function prog(){let h='<div class="prog">';for(let i=1;i<=4;i++){const cls=OB.step===2?"g":OB.step===3?"o":"";
   if(i<OB.step)h+='<div class="num '+(i===2?"g":i===3?"o":"")+'">'+i+'</div>';
   else if(i===OB.step)h+='<div class="num '+(i===2?"g":i===3?"o":"")+'">'+i+'</div>';
@@ -567,6 +567,7 @@ async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
   for(let i=0;i<6;i++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:NICHE});}catch(_){}if(!(pr&&pr.j&&pr.j.processed))break;}
   await loadChances();renderChances();toast("Fertig");}
 /* start */
+wireNav();
 if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';}else loadNiches();
 </script>
 </body>
