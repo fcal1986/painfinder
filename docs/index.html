@@ -368,6 +368,18 @@
   .sig-adv{color:var(--amber);border-color:rgba(255,179,71,.4);background:rgba(255,179,71,.10)}
   .tag.fresh{color:var(--gold);border-color:rgba(232,181,77,.45);background:rgba(232,181,77,.10)}
   .sigseg span[data-s].on{background:rgba(232,181,77,.18);border-color:var(--gold);color:var(--ink)}
+
+  /* === Quellen-Verwaltung in der Nische-Bearbeitung === */
+  #nichesModal .srcgroup{margin:8px 0}
+  #nichesModal .srcg-h{font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.5px;color:var(--gold);margin:12px 0 4px;display:flex;align-items:center;gap:6px}
+  #nichesModal .srcg-h span{color:var(--faint);font-size:10px}
+  #nichesModal .srcrow{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+  #nichesModal .srcrow.off{opacity:.5}
+  #nichesModal .srcname{flex:1;min-width:0;font-size:13px;word-break:break-word}
+  #nichesModal .srctog{flex:none;height:36px;padding:0 13px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);color:var(--faint);font-size:11px;cursor:pointer;font-family:inherit}
+  #nichesModal .srctog.on{color:var(--green);border-color:rgba(92,224,143,.4);background:rgba(92,224,143,.10)}
+  #nichesModal .srcdel{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--line2);background:var(--panel2);color:var(--muted);cursor:pointer;font-size:14px}
+  #nichesModal .srcdel:active{transform:scale(.92)}
 </style>
 </head>
 <body>
@@ -1597,8 +1609,35 @@ async function editAppSearch(id){
   box.querySelectorAll(".appcard").forEach(function(c){ var btn=c.querySelector(".appadd"); btn.onclick=async function(){
     btn.disabled=true; btn.textContent="\u2026";
     var src=await manageSrc({action:"add",platform:"appstore",handle:c.getAttribute("data-id")+"|"+c.getAttribute("data-name"),niche_id:id});
-    if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); }
+    if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); if(typeof loadEnSources==="function") loadEnSources(id); }
     else { btn.disabled=false; btn.textContent="+ Quelle"; } }; });
+}
+async function loadEnSources(id){
+  var el=document.getElementById("enSrcList"); if(el) el.innerHTML='<p style="color:var(--muted);font-size:12px">lade\u2026</p>';
+  var src=await manageSrc({action:"list",niche_id:id});
+  renderEnSources(src||[],id);
+}
+function renderEnSources(src,id){
+  var el=document.getElementById("enSrcList"); if(!el) return;
+  if(!src.length){ el.innerHTML='<p style="color:var(--muted);font-size:12px">Noch keine Quellen \u2014 oben App-Reviews suchen oder unten manuell erg\u00e4nzen.</p>'; return; }
+  var LAB={appstore:"App Store",googleplay:"Google Play",hackernews:"Hacker News",web:"Web",rss:"RSS",reddit:"Reddit",term:"Suchbegriff"};
+  var IC={appstore:"📱",googleplay:"🤖",hackernews:"🟧",web:"🌐",rss:"📰",reddit:"👽",term:"🔎"};
+  var groups={}; src.forEach(function(s){ (groups[s.platform]=groups[s.platform]||[]).push(s); });
+  el.innerHTML=Object.keys(groups).sort().map(function(p){
+    var rows=groups[p].map(function(s){
+      var nm=String(s.handle||""); if((p==="appstore"||p==="googleplay")){ var pipe=nm.indexOf("|"); if(pipe>=0) nm=nm.slice(pipe+1); }
+      return '<div class="srcrow'+(s.is_active?"":" off")+'">'+
+        '<span class="srcname">'+esc(nm)+'</span>'+
+        '<button class="srctog'+(s.is_active?" on":"")+'" data-entgl="'+s.id+'" data-act="'+(s.is_active?"0":"1")+'">'+(s.is_active?"aktiv":"aus")+'</button>'+
+        '<button class="srcdel" data-endel="'+s.id+'">✕</button></div>';
+    }).join("");
+    return '<div class="srcgroup"><div class="srcg-h">'+(IC[p]||"")+' '+(LAB[p]||p)+' <span>'+groups[p].length+'</span></div>'+rows+'</div>';
+  }).join("");
+  el.querySelectorAll("[data-entgl]").forEach(function(b){ b.onclick=async function(){
+    await manageSrc({action:"setactive",id:b.getAttribute("data-entgl"),is_active:b.getAttribute("data-act")==="1",niche_id:id}); loadEnSources(id); }; });
+  el.querySelectorAll("[data-endel]").forEach(function(b){ b.onclick=async function(){
+    if(!confirm("Quelle l\u00f6schen?")) return;
+    await manageSrc({action:"delete",id:b.getAttribute("data-endel"),niche_id:id}); loadEnSources(id); }; });
 }
 async function suggestCompApps(id){
   var comps=chipsVal("enComp").slice(0,5);
@@ -1619,7 +1658,7 @@ async function suggestCompApps(id){
   box.querySelectorAll(".appcard").forEach(function(c){ var btn=c.querySelector(".appadd"); btn.onclick=async function(){
     btn.disabled=true; btn.textContent="\u2026";
     var src=await manageSrc({action:"add",platform:"appstore",handle:c.getAttribute("data-id")+"|"+c.getAttribute("data-name"),niche_id:id});
-    if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); }
+    if(src){ c.classList.add("added"); btn.textContent="\u2713 drin"; toast("App hinzugef\u00fcgt \u2713"); if(typeof loadEnSources==="function") loadEnSources(id); }
     else { btn.disabled=false; btn.textContent="+ Quelle"; } }; });
 }
 function wireEdit(id){
@@ -1629,6 +1668,14 @@ function wireEdit(id){
     var row=b.parentNode; row.querySelectorAll(".star").forEach(function(s){ s.classList.toggle("on",(parseInt(s.getAttribute("data-v"),10))<=EDIT_STARS[key]); }); }; });
   var sb=document.getElementById("enAppBtn"); if(sb) sb.onclick=function(){ editAppSearch(id); };
   var sc=document.getElementById("enAppComp"); if(sc) sc.onclick=function(){ suggestCompApps(id); };
+  var sa=document.getElementById("enSrcAdd");
+  if(sa) sa.onclick=async function(){
+    var pl=document.getElementById("enSrcPlat").value, hv=document.getElementById("enSrcHandle").value.trim();
+    if(!hv){ toast("Wert eingeben"); return; }
+    var src=await manageSrc({action:"add",platform:pl,handle:hv,niche_id:id});
+    if(src){ document.getElementById("enSrcHandle").value=""; loadEnSources(id); toast("Quelle hinzugef\u00fcgt \u2713"); }
+  };
+  loadEnSources(id);
   var sq=document.getElementById("enAppQ"); if(sq) sq.onkeydown=function(e){ if(e.key==="Enter"){ e.preventDefault(); editAppSearch(id); } };
 }
 function editForm(n,p){
