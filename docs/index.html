@@ -208,6 +208,19 @@ a{color:inherit}
   .cop-grid{grid-template-columns:1fr}
   .qpair{grid-template-columns:1fr}
 }
+
+  /* Live-Aktivitäts-Feed beim Einrichten */
+  .feed{display:flex;flex-direction:column;gap:1px;margin-top:8px;max-height:60vh;overflow:auto}
+  .frow{display:flex;gap:12px;align-items:flex-start;padding:11px 4px;border-bottom:1px solid var(--line);animation:fadein .25s ease}
+  .frow:last-child{border-bottom:none}
+  .frow .ftext{flex:1;min-width:0}
+  .fl{font-weight:700;font-size:14.5px;line-height:1.3}
+  .frow.run .fl{color:var(--ink)} .frow.queued .fl{color:var(--faint)}
+  .fd{color:var(--muted);font-size:12.5px;margin-top:2px;word-break:break-word}
+  .fok{color:#fff;background:var(--green);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;margin-top:1px}
+  .fdot{width:22px;height:22px;border-radius:50%;background:var(--line);flex:none}
+  .fspin{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--primary);animation:r .8s linear infinite;flex:none}
+  @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
 </style>
 </head>
 <body>
@@ -481,32 +494,54 @@ function foot(enabled,label,color,last){return '<div class="obfoot"><button clas
 function obTopic(t){OB.topic=t;OB.topicFree="";renderOB();}
 function obPlace(k){OB.places.has(k)?OB.places.delete(k):OB.places.add(k);renderOB();}
 function obNext(){OB.step++;renderOB();}
+let OBLOG=[],OBDONE=false;
+function feedRow(s){const ic=s.status==='run'?'<span class="fspin"></span>':s.status==='done'?'<span class="fok">✓</span>':'<span class="fdot"></span>';
+  return '<div class="frow '+s.status+'">'+ic+'<div class="ftext"><div class="fl">'+esc(s.label)+'</div>'+(s.detail?'<div class="fd">'+esc(s.detail)+'</div>':'')+'</div></div>';}
+function obFeed(){$("view").innerHTML='<div class="ob"><div class="obh">'+(OBDONE?'Fertig! 🎉':'Wir richten alles für dich ein…')+'</div>'+
+  '<div class="obs">'+(OBDONE?'Deine ersten Chancen sind da.':'Du kannst live mitlesen, was gerade passiert.')+'</div>'+
+  '<div class="feed">'+OBLOG.map(feedRow).join("")+'</div>'+
+  (OBDONE?'<div class="obfoot"><button class="obbtn" onclick="loadNiches()">Chancen ansehen →</button></div>':'')+'</div>';
+  const f=document.querySelector('.feed');if(f)f.scrollTop=f.scrollHeight;}
+function obAdd(l){OBLOG.push({label:l,status:'run',detail:''});obFeed();return OBLOG.length-1;}
+function obDone(i,d){if(OBLOG[i]){OBLOG[i].status='done';if(d)OBLOG[i].detail=d;}obFeed();}
+function obSet(i,d){if(OBLOG[i])OBLOG[i].detail=d;obFeed();}
+async function cnt(table,nid){try{const{count}=await sb.from(table).select("*",{count:"exact",head:true}).eq("niche_id",nid);return count||0;}catch(_){return 0;}}
+const PLACE_LBL={"scrape-appstore":"App-Bewertungen","scrape-web":"Webseiten & Blogs","scrape-hn":"Communities","scrape-reddit":"Reddit","scrape-rss":"Aktuelle Beiträge"};
 async function obFinish(){const topic=OB.topic||OB.topicFree;if(!topic)return;
-  $("view").innerHTML='<div class="ob"><div class="obh">Wir richten alles ein…</div><div class="empty"><div class="spin"></div><p id="obMsg">Frage die KI nach passenden Begriffen…</p></div></div>';
-  const setMsg=m=>{const e=$("obMsg");if(e)e.textContent=m;};
+  OBLOG=[];OBDONE=false;obFeed();
+  let i=obAdd("Ich denke über dein Thema nach");
   const sug=await callFn("suggest-niche",{topic:topic,name:topic},false);
   const s=(sug&&sug.j&&sug.j.suggestion)||{name:topic,description:"",target_audience:OB.aud,keywords:[topic],competitors:[],sources:{terms:[topic],websites:[],rss:[],hackernews:[]}};
-  setMsg("Lege dein Suchfeld an…");
+  obDone(i,"Verstanden: "+(s.name||topic)+((s.keywords&&s.keywords.length)?" · "+s.keywords.slice(0,4).join(", "):""));
+  i=obAdd("Lege dein Suchfeld an");
   const cr=await callFn("manage-niches",{action:"create",name:s.name||topic,description:s.description||"",target_audience:OB.aud||s.target_audience||"",keywords:s.keywords||[topic],competitors:s.competitors||[]},false);
-  if(!cr||!cr.ok||!cr.j||!cr.j.id){toast("Konnte Suchfeld nicht anlegen");return loadNiches();}
-  const nid=cr.j.id;
+  if(!cr||!cr.ok||!cr.j||!cr.j.id){OBLOG[i].label="Konnte Suchfeld nicht anlegen";obDone(i,"Bitte später erneut versuchen");return;}
+  const nid=cr.j.id;obDone(i,"„"+(s.name||topic)+"“ angelegt");
+  i=obAdd("Speichere dein Profil");
   await callFn("manage-niches",{action:"save",id:nid,knowledge:[topic],reachable:OB.aud,can_build:"Selbsteinschätzung: Fachwissen "+OB.stars.knowledge+"/5, Zugang "+OB.stars.access+"/5, Umsetzung "+OB.stars.build+"/5"},false);
-  setMsg("Wähle die besten Orte zum Zuhören…");
+  obDone(i,"Selbsteinschätzung übernommen");
   let items=[];(s.sources&&s.sources.terms||[topic]).slice(0,6).forEach(t=>items.push({platform:"term",handle:t}));
   if(OB.places.has("web")||OB.places.has("communities")||OB.places.has("foren"))(s.sources&&s.sources.websites||[]).slice(0,6).forEach(w=>items.push({platform:"web",handle:w}));
   if(OB.places.has("communities")||OB.places.has("foren"))(s.sources&&s.sources.hackernews||[]).slice(0,4).forEach(q=>items.push({platform:"hackernews",handle:q}));
   if(OB.places.has("reddit"))(s.keywords||[topic]).slice(0,3).forEach(q=>items.push({platform:"reddit",handle:q}));
   (s.sources&&s.sources.rss||[]).slice(0,4).forEach(r=>items.push({platform:"rss",handle:r}));
-  if(OB.places.has("apps")){setMsg("Suche passende Konkurrenz-Apps…");const comps=(s.competitors||[]).slice(0,3),seen={};
-    for(const c of comps){const ar=await callFn("search-apps",{q:c},false);if(ar&&ar.j&&ar.j.apps)ar.j.apps.slice(0,1).forEach(a=>{if(!seen[a.id]){seen[a.id]=1;items.push({platform:"appstore",handle:a.id+"|"+a.name});}});}}
+  if(OB.places.has("apps")){i=obAdd("Suche passende Konkurrenz-Apps");const comps=(s.competitors||[]).slice(0,3),seen={};let names=[];
+    for(const c of comps){const ar=await callFn("search-apps",{q:c},false);if(ar&&ar.j&&ar.j.apps)ar.j.apps.slice(0,1).forEach(a=>{if(!seen[a.id]){seen[a.id]=1;items.push({platform:"appstore",handle:a.id+"|"+a.name});names.push(a.name);}});}
+    obDone(i,names.length?names.length+" gefunden: "+names.join(", "):"keine gefunden");}
+  i=obAdd("Richte die Orte zum Zuhören ein");
   if(items.length)await callFn("manage-sources",{action:"addmany",items:items,niche_id:nid},false);
+  obDone(i,items.length+" Orte aktiviert");
   NICHE=nid;localStorage.setItem("cf_niche",nid);
-  setMsg("Wir hören jetzt zu… einen Moment.");
   const scr=[];if(OB.places.has("apps"))scr.push("scrape-appstore");if(OB.places.has("web")||OB.places.has("communities")||OB.places.has("foren"))scr.push("scrape-web");if(OB.places.has("communities")||OB.places.has("foren"))scr.push("scrape-hn");if(OB.places.has("reddit"))scr.push("scrape-reddit");scr.push("scrape-rss");
-  for(const fn of scr){try{await callFn(fn,{niche_id:nid});}catch(_){}}
-  setMsg("Wir entdecken Chancen…");
-  for(let i=0;i<6;i++){const pr=await callFn("process-mentions",{niche_id:nid});setMsg("Wir entdecken Chancen… ("+(i+1)+")");if(pr&&pr.j&&pr.j.done)break;}
-  await loadNiches();
+  for(const fn of scr){const k=obAdd("Höre zu: "+(PLACE_LBL[fn]||fn));let r=null;try{r=await callFn(fn,{niche_id:nid});}catch(_){}
+    const ins=(r&&r.j&&r.j.inserted)||0;obDone(k,ins>0?ins+" neue Kundenstimmen":"nichts Neues gefunden");}
+  const proc=obAdd("Lese Kundenstimmen und entdecke Chancen");
+  let chances=0;
+  for(let b=0;b<8;b++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:nid});}catch(_){}
+    const processed=(pr&&pr.j&&pr.j.processed)||0;chances=await cnt("dashboard_opportunities",nid);
+    obSet(proc,chances+" Chancen entdeckt"+(processed?" · noch am Lesen…":""));if(!processed)break;}
+  obDone(proc,chances+" Chancen entdeckt");
+  OBDONE=true;obFeed();
 }
 /* start */
 if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';}else loadNiches();
