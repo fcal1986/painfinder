@@ -235,6 +235,7 @@ a{color:inherit}
       <a data-tab="tasks"><span class="ic">📋</span>Aufgaben</a>
       <a data-tab="profile"><span class="ic">👤</span>Profil</a>
     </div>
+    <div class="acct" id="acct" style="display:none;margin-top:12px"></div>
     <div class="streak"><div class="t">🔥 3 Tage in Folge</div><div class="s">Weiter so!</div>
       <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><b></b><i></i><i></i><i></i></div></div>
   </aside>
@@ -297,7 +298,7 @@ function catIcon(o){const c=(o.category||"").toLowerCase();if(c.includes("saas")
 function savedGet(){try{return JSON.parse(localStorage.getItem("cf_saved")||"[]");}catch(_){return[];}}
 function toggleSave(id,el){let a=savedGet();if(a.includes(id)){a=a.filter(x=>x!==id);}else a.push(id);localStorage.setItem("cf_saved",JSON.stringify(a));if(event)event.stopPropagation();if(TAB==="chances"){renderChances();}else if(el){el.classList.toggle("on");}}
 /* data */
-let LOADED=false,NICHES_ERR=false;
+let LOADED=false,NICHES_ERR=false,CLAIMED=false;
 function setNicheSel(){const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id===NICHE?" selected":"")+'>'+esc(n.name)+'</option>').join("");const sm=$("fieldSelM");if(sm){sm.innerHTML=opt;sm.onchange=()=>switchField(sm.value);}}
 async function ensureData(force){
   if(LOADED&&!force)return;
@@ -311,9 +312,13 @@ async function ensureData(force){
   LOADED=true;
 }
 async function loadNiches(){LOADED=false;await ensureData();route();}
+async function claimAndReload(){try{await sb.rpc("pf_claim_orphans",{p_user:USER.id});}catch(_){}LOADED=false;await loadNiches();}
 function route(){
   if(NICHES_ERR){$("bnav").style.display="none";$("view").innerHTML='<div class="empty"><div class="big">⚠️</div><p>Konnte gerade nicht laden.</p><button class="btn primary" style="max-width:240px;margin:14px auto" onclick="loadNiches()">Erneut versuchen</button></div>';return;}
-  if(!NICHES.length){$("bnav").style.display="none";return startOnboarding();}
+  if(!NICHES.length){
+    if(USER&&!CLAIMED){CLAIMED=true;claimAndReload();return;}
+    $("bnav").style.display="none";return startOnboarding();
+  }
   $("bnav").style.display="flex";$("fpMobile").style.display="";go("home");
 }
 async function enterDashboard(nid,name){
@@ -480,7 +485,7 @@ function toggleTask(i){const a=tasksGet();if(a[i]){a[i].done=!a[i].done;tasksSet
 let PROF={knowledge:[],reachable:"",can_build:""},PSTARS={knowledge:0,access:0,build:0};
 function parseStars(cb){const m=String(cb||"").match(/Fachwissen\s*(\d)\/5,\s*Zugang\s*(\d)\/5,\s*Umsetzung\s*(\d)\/5/);return{knowledge:m?+m[1]:0,access:m?+m[2]:0,build:m?+m[3]:0};}
 async function renderProfile(){
-  if(!NICHE){$("view").innerHTML='<div class="hi" style="font-size:24px">Mein Profil</div><p class="hi-sub">Lege zuerst ein Suchfeld an.</p><button class="btn primary" style="max-width:260px" onclick="startOnboarding()">Suchfeld erstellen</button>';return;}
+  if(!NICHE){$("view").innerHTML='<div class="hi" style="font-size:24px">Mein Profil</div>'+(USER?'<p class="hi-sub">Angemeldet als '+esc(USER.email||"")+'</p>':'')+'<p class="hi-sub">Lege ein Suchfeld an oder hole deine bisherigen Chancen.</p><div style="display:flex;flex-direction:column;gap:10px;max-width:320px"><button class="btn primary" onclick="startOnboarding()">Suchfeld erstellen</button><button class="btn" onclick="claimData()">Meine bisherigen Chancen laden</button><button class="btn" onclick="logout()">Abmelden</button></div>';return;}
   $("view").innerHTML='<div class="hi" style="font-size:24px">Mein Profil</div><div class="spin"></div>';
   const r=await callFn("manage-niches",{action:"get",id:NICHE});PROF=(r&&r.j&&r.j.profile)||PROF;PSTARS=parseStars(PROF.can_build);
   const L=[["knowledge","Wissen"],["access","Zugang zu Kunden"],["build","Umsetzungskraft"]];
@@ -591,7 +596,8 @@ async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
   await loadChances();renderChances();toast("Fertig");}
 /* start */
 let USER=null,AUTHTOKEN=null;
-function applySession(s){USER=(s&&s.user)||null;AUTHTOKEN=(s&&s.access_token)||null;}
+function applySession(s){USER=(s&&s.user)||null;AUTHTOKEN=(s&&s.access_token)||null;renderAcct();}
+function renderAcct(){var el=$("acct");if(!el)return;if(USER){el.style.display="";el.innerHTML='<div style="font-size:11px;color:var(--faint);margin:0 0 6px;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(USER.email||"Angemeldet")+'</div><button class="btn" style="margin-bottom:6px;font-size:13px;padding:8px" onclick="claimData()">Meine bisherigen Chancen laden</button><button class="btn" style="font-size:13px;padding:8px" onclick="logout()">Abmelden</button>';}else{el.style.display="none";el.innerHTML="";}}
 async function initAuth(){
   wireNav();
   if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';return;}
@@ -616,7 +622,7 @@ function renderLogin(){
 async function loginGoogle(){try{await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.href.split("#")[0]}});}catch(e){var el=$("liErr");if(el)el.textContent=String(e.message||e);}}
 async function loginPw(){var e=($("liEmail")||{}).value,p=($("liPass")||{}).value;if(!e||!p){$("liErr").textContent="Bitte E-Mail und Passwort eingeben.";return;}const{error}=await sb.auth.signInWithPassword({email:e.trim(),password:p});if(error)$("liErr").textContent=error.message;}
 async function signupPw(){var e=($("liEmail")||{}).value,p=($("liPass")||{}).value;if(!e||!p){$("liErr").textContent="Bitte E-Mail und Passwort eingeben.";return;}const{error}=await sb.auth.signUp({email:e.trim(),password:p});if(error)$("liErr").textContent=error.message;else $("liErr").textContent="Fast geschafft - bestaetige ggf. deine E-Mail und melde dich dann an.";}
-async function logout(){try{await sb.auth.signOut();}catch(_){}USER=null;AUTHTOKEN=null;NICHE=null;NICHES=[];CHANCES=[];LOADED=false;renderLogin();}
+async function logout(){try{await sb.auth.signOut();}catch(_){}USER=null;AUTHTOKEN=null;NICHE=null;NICHES=[];CHANCES=[];LOADED=false;renderAcct();renderLogin();}
 async function claimData(){if(!USER)return;toast("Uebernehme Daten...");try{await sb.rpc("pf_claim_orphans",{p_user:USER.id});}catch(_){}LOADED=false;await loadNiches();toast("Uebernommen");}
 initAuth();
 </script>
