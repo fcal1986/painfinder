@@ -269,12 +269,13 @@ let NICHES=[],NICHE=null,CHANCES=[],TAB="home",STATS={mentions:0,sources:0};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function toast(m){const t=$("toast");t.textContent=m;t.classList.add("on");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("on"),2200);}
-function getSecret(){let s=sessionStorage.getItem("pf_secret");if(!s){s=prompt("Zugangs-Code:");if(s)sessionStorage.setItem("pf_secret",s);}return s;}
+function getSecret(){return cfg.PAINFINDER_SECRET||sessionStorage.getItem("pf_secret")||"";}
 async function callFn(name,body,withNiche=true){
-  const secret=getSecret();if(!secret){toast("Kein Zugangs-Code");return null;}
+  const secret=getSecret();
   const p=Object.assign({},body||{});if(withNiche&&NICHE&&p.niche_id==null)p.niche_id=NICHE;
-  try{const r=await fetch(FN+name,{method:"POST",headers:{"Authorization":"Bearer "+(AUTHTOKEN||cfg.SUPABASE_ANON_KEY),"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(p)});
-    let j=null;try{j=await r.json();}catch(_){}if(r.status===401){sessionStorage.removeItem("pf_secret");toast("Code falsch");return null;}
+  const headers={"Authorization":"Bearer "+(AUTHTOKEN||cfg.SUPABASE_ANON_KEY),"Content-Type":"application/json"};if(secret)headers["x-painfinder-secret"]=secret;
+  try{const r=await fetch(FN+name,{method:"POST",headers:headers,body:JSON.stringify(p)});
+    let j=null;try{j=await r.json();}catch(_){}if(r.status===401){toast("Nicht autorisiert");return null;}
     return{ok:r.ok&&!(j&&j.error),j,status:r.status};}catch(e){return{ok:false,j:{error:String(e)}};}
 }
 /* derivations */
