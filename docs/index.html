@@ -221,6 +221,8 @@ a{color:inherit}
   .fok{color:#fff;background:var(--green);width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;margin-top:1px}
   .fdot{width:22px;height:22px;border-radius:50%;background:var(--line);flex:none}
   .fspin{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--line);border-top-color:var(--primary);animation:r .8s linear infinite;flex:none}
+  .fbar{height:6px;border-radius:6px;background:var(--line);margin-top:7px;overflow:hidden}
+  .fbar>i{display:block;height:100%;background:var(--primary);border-radius:6px;transition:width .45s ease}
   @keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
 </style>
 </head>
@@ -533,7 +535,8 @@ function obPlace(k){OB.places.has(k)?OB.places.delete(k):OB.places.add(k);render
 function obNext(){OB.step++;renderOB();}
 let OBLOG=[],OBDONE=false,OBRESULT={nid:null,name:"",chances:0};
 function feedRow(s){const ic=s.status==='run'?'<span class="fspin"></span>':s.status==='done'?'<span class="fok">✓</span>':'<span class="fdot"></span>';
-  return '<div class="frow '+s.status+'">'+ic+'<div class="ftext"><div class="fl">'+esc(s.label)+'</div>'+(s.detail?'<div class="fd">'+esc(s.detail)+'</div>':'')+'</div></div>';}
+  const bar=(typeof s.pct==='number')?'<div class="fbar"><i style="width:'+Math.max(3,Math.min(100,s.pct))+'%"></i></div>':'';
+  return '<div class="frow '+s.status+'">'+ic+'<div class="ftext"><div class="fl">'+esc(s.label)+'</div>'+(s.detail?'<div class="fd">'+esc(s.detail)+'</div>':'')+bar+'</div></div>';}
 function obFeed(){$("view").innerHTML='<div class="ob"><div class="obh">'+(OBDONE?'Fertig! 🎉':'Wir richten alles für dich ein…')+'</div>'+
   '<div class="obs">'+(OBDONE?(OBRESULT.chances+' Chancen gefunden.'):'Du kannst live mitlesen, was gerade passiert.')+'</div>'+
   '<div class="feed">'+OBLOG.map(feedRow).join("")+'</div>'+
@@ -581,7 +584,7 @@ async function pollJob(jobId,nid,name){
     let j=null;try{const{data}=await sb.from("discovery_jobs").select("*").eq("id",jobId).maybeSingle();j=data;}catch(_){j=null;}
     if(j){
       seen=true;
-      OBLOG=(j.log||[]).map(function(x){return{label:x.label,detail:x.detail||"",status:x.status==="run"?"run":"done"};});
+      OBLOG=(j.log||[]).map(function(x){var o={label:x.label,detail:x.detail||"",status:x.status==="run"?"run":"done"};if(typeof x.pct==="number")o.pct=x.pct;return o;});
       if(j.status==="done"){OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);return;}
       if(j.status==="error"){OBLOG.push({label:"Es gab ein Problem",detail:j.error||"",status:"done"});OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();return;}
       obFeed();
@@ -595,12 +598,23 @@ async function pollJob(jobId,nid,name){
   OBDONE=true;obFeed();enterDashboard(nid,name);
 }
 async function obFallbackSearch(nid,name){
-  const k=obAdd("Suche laeuft (im Browser)");
+  const ks=obAdd("Höre an deinen Orten zu");
   const scr=["scrape-appstore","scrape-web","scrape-hn","scrape-rss"];
   for(const fn of scr){try{await callFn(fn,{niche_id:nid});}catch(_){}}
-  let chances=0;
-  for(let b=0;b<6;b++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:nid});}catch(_){}const processed=(pr&&pr.j&&pr.j.processed)||0;chances=await cnt("dashboard_opportunities",nid);if(!processed)break;}
-  obDone(k,chances+" Chancen entdeckt");
+  const total=await cnt("raw_mentions",nid);
+  obDone(ks,total+" Kundenstimmen gesammelt");
+  const kr=obAdd("Lese Kundenstimmen und entdecke Chancen");
+  let chances=0,processedTotal=0;const t0=Date.now();
+  for(let b=0;b<12;b++){
+    let pr=null;try{pr=await callFn("process-mentions",{niche_id:nid});}catch(_){}
+    const processed=(pr&&pr.j&&pr.j.processed)||0;processedTotal+=processed;
+    chances=await cnt("dashboard_opportunities",nid);
+    let pct=total>0?Math.round(processedTotal/total*100):(processed?50:100);pct=processed?Math.min(pct,95):100;
+    let d=(total>0?(Math.min(processedTotal,total)+" von "+total+" Kundenstimmen gelesen"):(processedTotal+" Kundenstimmen gelesen"))+" · "+chances+" Chancen";
+    if(processed&&processedTotal>0&&total>processedTotal){let eta=Math.round((Date.now()-t0)/processedTotal*(total-processedTotal)/1000);eta=Math.min(Math.max(eta,1),900);d+=" · noch ca. "+(eta>=60?(Math.floor(eta/60)+" Min "+(eta%60)+" Sek"):(eta+" Sek"));}
+    if(OBLOG[kr]){OBLOG[kr].detail=d;OBLOG[kr].pct=pct;OBLOG[kr].status=processed?"run":"done";}obFeed();
+    if(!processed)break;
+  }
   OBRESULT={nid:nid,name:name,chances:chances};OBDONE=true;obFeed();
   setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);
 }
