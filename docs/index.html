@@ -579,17 +579,23 @@ async function obFinish(){const topic=OB.topic||OB.topicFree;if(!topic)return;
   await pollJob(jobId,nid,(s.name||topic));
 }
 async function pollJob(jobId,nid,name){
-  let seen=false;
-  for(let i=0;i<100;i++){
+  let seen=false,lastSig="",stall=0;
+  for(let i=0;i<140;i++){
     let j=null;try{const{data}=await sb.from("discovery_jobs").select("*").eq("id",jobId).maybeSingle();j=data;}catch(_){j=null;}
     if(j){
       seen=true;
       OBLOG=(j.log||[]).map(function(x){var o={label:x.label,detail:x.detail||"",status:x.status==="run"?"run":"done"};if(typeof x.pct==="number")o.pct=x.pct;return o;});
       if(j.status==="done"){OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);return;}
       if(j.status==="error"){OBLOG.push({label:"Es gab ein Problem",detail:j.error||"",status:"done"});OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();return;}
+      var sig=(j.status||"")+"|"+(j.log?j.log.length:0)+"|"+(j.total_chances||0)+"|"+(j.updated_at||"");
+      stall=(sig===lastSig)?stall+1:0; lastSig=sig;
       obFeed();
+      if(stall>=30){ // ~54s ohne Fortschritt -> nicht blockieren
+        toast("Suche läuft im Hintergrund weiter");
+        OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();
+        setTimeout(function(){enterDashboard(nid,name);},1200);return;
+      }
     } else if(!seen && i>=5){
-      // Hintergrund-Funktion nicht erreichbar -> Suche im Browser ausfuehren
       await obFallbackSearch(nid,name); return;
     }
     await new Promise(function(r){setTimeout(r,1800);});
