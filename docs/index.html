@@ -273,7 +273,7 @@ function getSecret(){let s=sessionStorage.getItem("pf_secret");if(!s){s=prompt("
 async function callFn(name,body,withNiche=true){
   const secret=getSecret();if(!secret){toast("Kein Zugangs-Code");return null;}
   const p=Object.assign({},body||{});if(withNiche&&NICHE&&p.niche_id==null)p.niche_id=NICHE;
-  try{const r=await fetch(FN+name,{method:"POST",headers:{"Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(p)});
+  try{const r=await fetch(FN+name,{method:"POST",headers:{"Authorization":"Bearer "+(AUTHTOKEN||cfg.SUPABASE_ANON_KEY),"Content-Type":"application/json","x-painfinder-secret":secret},body:JSON.stringify(p)});
     let j=null;try{j=await r.json();}catch(_){}if(r.status===401){sessionStorage.removeItem("pf_secret");toast("Code falsch");return null;}
     return{ok:r.ok&&!(j&&j.error),j,status:r.status};}catch(e){return{ok:false,j:{error:String(e)}};}
 }
@@ -301,7 +301,7 @@ function setNicheSel(){const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id=
 async function ensureData(force){
   if(LOADED&&!force)return;
   NICHES_ERR=false;
-  try{const{data,error}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");if(error)NICHES_ERR=true;NICHES=data||[];}catch(_){NICHES_ERR=true;NICHES=[];}
+  try{let q=sb.from("niches").select("*").eq("is_archived",false);if(USER)q=q.or("user_id.eq."+USER.id+",user_id.is.null");const{data,error}=await q.order("created_at");if(error)NICHES_ERR=true;NICHES=data||[];}catch(_){NICHES_ERR=true;NICHES=[];}
   if(NICHES.length){
     if(!NICHE||!NICHES.some(n=>n.id===NICHE)){const s=localStorage.getItem("cf_niche");NICHE=(s&&NICHES.some(n=>n.id===s))?s:NICHES[0].id;}
     await Promise.all(NICHES.map(async n=>{try{const{count}=await sb.from("dashboard_opportunities").select("*",{count:"exact",head:true}).eq("niche_id",n.id);n._count=count||0;}catch(_){n._count=0;}}));
@@ -317,7 +317,7 @@ function route(){
 }
 async function enterDashboard(nid,name){
   LOADED=false;
-  try{const{data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");NICHES=data||[];}catch(_){NICHES=NICHES||[];}
+  try{let q=sb.from("niches").select("*").eq("is_archived",false);if(USER)q=q.or("user_id.eq."+USER.id+",user_id.is.null");const{data}=await q.order("created_at");NICHES=data||[];}catch(_){NICHES=NICHES||[];}
   if(!NICHES.some(n=>n.id===nid))NICHES.unshift({id:nid,name:name||"Neues Suchfeld"});
   NICHE=nid;localStorage.setItem("cf_niche",nid);
   await Promise.all(NICHES.map(async n=>{try{const{count}=await sb.from("dashboard_opportunities").select("*",{count:"exact",head:true}).eq("niche_id",n.id);n._count=count||0;}catch(_){n._count=0;}}));
@@ -486,6 +486,7 @@ async function renderProfile(){
   let h='<div class="hi" style="font-size:24px">Mein Profil</div><p class="hi-sub">Das steuert, was „zu dir passt".</p>';
   h+='<div class="card" style="padding:18px;max-width:460px">'+L.map(([k,l])=>'<div class="starline"><span class="lab">'+l+'</span><span>'+[1,2,3,4,5].map(i=>'<button class="star'+(i<=PSTARS[k]?" on":"")+'" onclick="setStar(\''+k+'\','+i+')">★</button>').join("")+'</span></div>').join("")+'</div>';
   h+='<div class="sec">Suchfelder</div><div class="projects">'+NICHES.map(n=>'<div class="proj" onclick="switchField(\''+n.id+'\')"><div class="pic">🗂</div><div><div class="pn">'+esc(n.name)+'</div><div class="pc">'+(n._count||0)+' Chancen</div></div></div>').join("")+'<div class="proj add" onclick="go(\'new\')"><div class="pic">＋</div><div><div class="pn">Neues Suchfeld</div></div></div></div>';
+  h+='<div class="sec">Konto</div><div class="card" style="padding:16px;max-width:460px">'+(USER?'<div class="pc" style="margin-bottom:10px">Angemeldet als '+esc(USER.email||USER.id)+'</div>':'')+'<button class="btn" style="margin-bottom:8px" onclick="claimData()">Vorhandene Chancen übernehmen</button><button class="btn" onclick="logout()">Abmelden</button></div>';
   $("view").innerHTML=h;
 }
 function setStar(k,v){PSTARS[k]=v;const base=String(PROF.can_build||"").replace(/\s*·?\s*Selbsteinschätzung:.*$/,"").trim();
@@ -563,18 +564,24 @@ async function obFinish(){const topic=OB.topic||OB.topicFree;if(!topic)return;
   if(items.length)await callFn("manage-sources",{action:"addmany",items:items,niche_id:nid},false);
   obDone(i,items.length+" Orte aktiviert");
   NICHE=nid;localStorage.setItem("cf_niche",nid);
-  const scr=[];if(OB.places.has("apps"))scr.push("scrape-appstore");if(OB.places.has("web")||OB.places.has("communities")||OB.places.has("foren"))scr.push("scrape-web");if(OB.places.has("communities")||OB.places.has("foren"))scr.push("scrape-hn");if(OB.places.has("reddit"))scr.push("scrape-reddit");scr.push("scrape-rss");
-  for(const fn of scr){const k=obAdd("Höre zu: "+(PLACE_LBL[fn]||fn));let r=null;try{r=await callFn(fn,{niche_id:nid});}catch(_){}
-    const ins=(r&&r.j&&r.j.inserted)||0;obDone(k,ins>0?ins+" neue Kundenstimmen":"nichts Neues gefunden");}
-  const proc=obAdd("Lese Kundenstimmen und entdecke Chancen");
-  let chances=0;
-  for(let b=0;b<8;b++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:nid});}catch(_){}
-    const processed=(pr&&pr.j&&pr.j.processed)||0;chances=await cnt("dashboard_opportunities",nid);
-    obSet(proc,chances+" Chancen entdeckt"+(processed?" · noch am Lesen…":""));if(!processed)break;}
-  obDone(proc,chances+" Chancen entdeckt");
-  OBRESULT={nid:nid,name:(s.name||topic),chances:chances};
-  OBDONE=true;obFeed();
-  setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,(s.name||topic));},1600);
+  // Hintergrund-Suche starten: laeuft serverseitig weiter, auch wenn die App geschlossen wird
+  const jobId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+"-"+Math.random());
+  callFn("discover",{niche_id:nid,job_id:jobId});
+  OBRESULT={nid:nid,name:(s.name||topic),chances:0};
+  await pollJob(jobId,nid,(s.name||topic));
+}
+async function pollJob(jobId,nid,name){
+  for(let i=0;i<120;i++){
+    let j=null;try{const{data}=await sb.from("discovery_jobs").select("*").eq("id",jobId).single();j=data;}catch(_){}
+    if(j){
+      OBLOG=(j.log||[]).map(function(x){return{label:x.label,detail:x.detail||"",status:x.status==="run"?"run":"done"};});
+      if(j.status==="done"){OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);return;}
+      if(j.status==="error"){OBLOG.push({label:"Es gab ein Problem",detail:j.error||"",status:"done"});OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();return;}
+      obFeed();
+    }
+    await new Promise(function(r){setTimeout(r,1800);});
+  }
+  OBDONE=true;obFeed();enterDashboard(nid,name);
 }
 async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
   const scr=["scrape-appstore","scrape-web","scrape-hn","scrape-rss"];
@@ -582,8 +589,35 @@ async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
   for(let i=0;i<6;i++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:NICHE});}catch(_){}if(!(pr&&pr.j&&pr.j.processed))break;}
   await loadChances();renderChances();toast("Fertig");}
 /* start */
-wireNav();
-if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';}else loadNiches();
+let USER=null,AUTHTOKEN=null;
+function applySession(s){USER=(s&&s.user)||null;AUTHTOKEN=(s&&s.access_token)||null;}
+async function initAuth(){
+  wireNav();
+  if(!cfg.SUPABASE_URL){$("view").innerHTML='<div class="empty"><div class="big">⚙️</div><p>config.js fehlt.</p></div>';return;}
+  try{const{data}=await sb.auth.getSession();applySession(data&&data.session);}catch(_){}
+  sb.auth.onAuthStateChange(function(_e,s){const had=!!USER;applySession(s);if(s&&!had){LOADED=false;loadNiches();}else if(!s){renderLogin();}});
+  if(USER){LOADED=false;loadNiches();}else renderLogin();
+}
+function renderLogin(){
+  $("bnav").style.display="none";
+  $("view").innerHTML='<div class="ob" style="max-width:420px">'+
+    '<div class="obh" style="text-align:center">Willkommen beim Chancen-Finder</div>'+
+    '<div class="obs" style="text-align:center">Melde dich an, damit deine Chancen gespeichert bleiben.</div>'+
+    '<button class="btn" style="margin-bottom:6px" onclick="loginGoogle()">Mit Google anmelden</button>'+
+    '<div style="text-align:center;color:var(--faint);font-size:12px;margin:10px 0">oder mit E-Mail</div>'+
+    '<input class="obinput" id="liEmail" type="email" placeholder="E-Mail">'+
+    '<input class="obinput" id="liPass" type="password" placeholder="Passwort" style="margin-top:10px">'+
+    '<div id="liErr" style="color:#dc2626;font-size:13px;margin-top:8px;min-height:16px"></div>'+
+    '<button class="btn primary" style="margin-top:6px" onclick="loginPw()">Anmelden</button>'+
+    '<button class="btn" style="margin-top:8px;background:transparent;border:none;color:var(--primary)" onclick="signupPw()">Neu hier? Konto erstellen</button>'+
+    '</div>';
+}
+async function loginGoogle(){try{await sb.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.href.split("#")[0]}});}catch(e){var el=$("liErr");if(el)el.textContent=String(e.message||e);}}
+async function loginPw(){var e=($("liEmail")||{}).value,p=($("liPass")||{}).value;if(!e||!p){$("liErr").textContent="Bitte E-Mail und Passwort eingeben.";return;}const{error}=await sb.auth.signInWithPassword({email:e.trim(),password:p});if(error)$("liErr").textContent=error.message;}
+async function signupPw(){var e=($("liEmail")||{}).value,p=($("liPass")||{}).value;if(!e||!p){$("liErr").textContent="Bitte E-Mail und Passwort eingeben.";return;}const{error}=await sb.auth.signUp({email:e.trim(),password:p});if(error)$("liErr").textContent=error.message;else $("liErr").textContent="Fast geschafft - bestaetige ggf. deine E-Mail und melde dich dann an.";}
+async function logout(){try{await sb.auth.signOut();}catch(_){}USER=null;AUTHTOKEN=null;NICHE=null;NICHES=[];CHANCES=[];LOADED=false;renderLogin();}
+async function claimData(){if(!USER)return;toast("Uebernehme Daten...");try{await sb.rpc("pf_claim_orphans",{p_user:USER.id});}catch(_){}LOADED=false;await loadNiches();toast("Uebernommen");}
+initAuth();
 </script>
 </body>
 </html>
