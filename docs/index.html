@@ -577,17 +577,33 @@ async function obFinish(){const topic=OB.topic||OB.topicFree;if(!topic)return;
   await pollJob(jobId,nid,(s.name||topic));
 }
 async function pollJob(jobId,nid,name){
-  for(let i=0;i<120;i++){
-    let j=null;try{const{data}=await sb.from("discovery_jobs").select("*").eq("id",jobId).single();j=data;}catch(_){}
+  let seen=false;
+  for(let i=0;i<100;i++){
+    let j=null;try{const{data}=await sb.from("discovery_jobs").select("*").eq("id",jobId).maybeSingle();j=data;}catch(_){j=null;}
     if(j){
+      seen=true;
       OBLOG=(j.log||[]).map(function(x){return{label:x.label,detail:x.detail||"",status:x.status==="run"?"run":"done"};});
       if(j.status==="done"){OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);return;}
       if(j.status==="error"){OBLOG.push({label:"Es gab ein Problem",detail:j.error||"",status:"done"});OBRESULT={nid:nid,name:name,chances:j.total_chances||0};OBDONE=true;obFeed();return;}
       obFeed();
+    } else if(!seen && i>=5){
+      // Hintergrund-Funktion nicht erreichbar -> Suche im Browser ausfuehren
+      await obFallbackSearch(nid,name); return;
     }
     await new Promise(function(r){setTimeout(r,1800);});
   }
+  if(!seen){await obFallbackSearch(nid,name);return;}
   OBDONE=true;obFeed();enterDashboard(nid,name);
+}
+async function obFallbackSearch(nid,name){
+  const k=obAdd("Suche laeuft (im Browser)");
+  const scr=["scrape-appstore","scrape-web","scrape-hn","scrape-rss"];
+  for(const fn of scr){try{await callFn(fn,{niche_id:nid});}catch(_){}}
+  let chances=0;
+  for(let b=0;b<6;b++){let pr=null;try{pr=await callFn("process-mentions",{niche_id:nid});}catch(_){}const processed=(pr&&pr.j&&pr.j.processed)||0;chances=await cnt("dashboard_opportunities",nid);if(!processed)break;}
+  obDone(k,chances+" Chancen entdeckt");
+  OBRESULT={nid:nid,name:name,chances:chances};OBDONE=true;obFeed();
+  setTimeout(function(){if(OBDONE&&TAB!=="home"&&TAB!=="chances")enterDashboard(nid,name);},1500);
 }
 async function reprocess(){if(!NICHE)return;toast("Suche läuft…");
   const scr=["scrape-appstore","scrape-web","scrape-hn","scrape-rss"];
