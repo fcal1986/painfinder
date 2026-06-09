@@ -303,7 +303,7 @@ function setNicheSel(){const opt=NICHES.map(n=>'<option value="'+n.id+'"'+(n.id=
 async function ensureData(force){
   if(LOADED&&!force)return;
   NICHES_ERR=false;
-  try{let q=sb.from("niches").select("*").eq("is_archived",false);if(USER)q=q.or("user_id.eq."+USER.id+",user_id.is.null");const{data,error}=await q.order("created_at");if(error)NICHES_ERR=true;NICHES=data||[];}catch(_){NICHES_ERR=true;NICHES=[];}
+  try{const{data,error}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");if(error)NICHES_ERR=true;NICHES=data||[];}catch(_){NICHES_ERR=true;NICHES=[];}
   if(NICHES.length){
     if(!NICHE||!NICHES.some(n=>n.id===NICHE)){const s=localStorage.getItem("cf_niche");NICHE=(s&&NICHES.some(n=>n.id===s))?s:NICHES[0].id;}
     await Promise.all(NICHES.map(async n=>{try{const{count}=await sb.from("dashboard_opportunities").select("*",{count:"exact",head:true}).eq("niche_id",n.id);n._count=count||0;}catch(_){n._count=0;}}));
@@ -316,14 +316,13 @@ async function claimAndReload(){try{await sb.rpc("pf_claim_orphans",{p_user:USER
 function route(){
   if(NICHES_ERR){$("bnav").style.display="none";$("view").innerHTML='<div class="empty"><div class="big">⚠️</div><p>Konnte gerade nicht laden.</p><button class="btn primary" style="max-width:240px;margin:14px auto" onclick="loadNiches()">Erneut versuchen</button></div>';return;}
   if(!NICHES.length){
-    if(USER&&!CLAIMED){CLAIMED=true;claimAndReload();return;}
     $("bnav").style.display="none";return startOnboarding();
   }
   $("bnav").style.display="flex";$("fpMobile").style.display="";go("home");
 }
 async function enterDashboard(nid,name){
   LOADED=false;
-  try{let q=sb.from("niches").select("*").eq("is_archived",false);if(USER)q=q.or("user_id.eq."+USER.id+",user_id.is.null");const{data}=await q.order("created_at");NICHES=data||[];}catch(_){NICHES=NICHES||[];}
+  try{const{data}=await sb.from("niches").select("*").eq("is_archived",false).order("created_at");NICHES=data||[];}catch(_){NICHES=NICHES||[];}
   if(!NICHES.some(n=>n.id===nid))NICHES.unshift({id:nid,name:name||"Neues Suchfeld"});
   NICHE=nid;localStorage.setItem("cf_niche",nid);
   await Promise.all(NICHES.map(async n=>{try{const{count}=await sb.from("dashboard_opportunities").select("*",{count:"exact",head:true}).eq("niche_id",n.id);n._count=count||0;}catch(_){n._count=0;}}));
